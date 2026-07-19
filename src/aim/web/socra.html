@@ -150,6 +150,11 @@
   .saved { text-align: center; color: var(--good); font-weight: 700; margin-top: 12px; }
   #panel-btn { width: 100%; margin-top: 10px; background: var(--accent2); color: #fff; border: 0;
                border-radius: 10px; padding: 10px; font-weight: 700; font-size: 13.5px; cursor: pointer; }
+  #defer { width: 100%; margin-top: 8px; background: transparent; color: var(--ink2);
+           border: 1.5px solid var(--border); border-radius: 10px; padding: 10px;
+           font-weight: 600; font-size: 13px; cursor: pointer; }
+  #defer:hover { border-color: var(--accent2); color: var(--accent2); }
+  .pv .p .miss { color: var(--accent-ink); font-size: 11.5px; margin-top: 2px; }
   .pv { margin-top: 12px; }
   .pv .cons { font-size: 13px; font-weight: 700; margin-bottom: 8px; padding: 8px 10px;
               background: var(--accent2-soft); border-radius: 8px; color: var(--accent2); }
@@ -373,9 +378,11 @@ function renderCard(c, saved, sess) {
     ${saved?`<div class="saved">✓ 감시 시작 — 근거가 변하면 알려드려요</div>
              <button id="panel-btn" onclick="loadPanel()">🏛️ 대가들은 어떻게 볼까?</button>
              <div id="panel-view" class="pv"></div>`
-           :`<button id="confirm" onclick="confirmCard()">이대로 확정하기</button>`}
+           :`<button id="confirm" onclick="confirmCard()">이대로 확정하기</button>
+             <button id="defer" onclick="deferCard()">🤔 보류하기 — 더 알아보고 결정</button>`}
   </div>`;
 }
+function deferCard() { $('input').value = '보류'; send(); }
 
 /* ── 대가 패널 (카드 확정 후 참고 관점) ── */
 let SESS_SYMBOL = null;
@@ -393,7 +400,8 @@ async function loadPanel() {
         <div class="h"><span>${esc(v.display)}</span>
           <span class="st-${v.stance}">${v.stance} ${v.confidence}%</span></div>
         <div class="th">${esc(v.thesis)}</div>
-        <div class="km">주목: ${esc(v.key_metric)}</div></div>`).join('')
+        <div class="km">주목: ${esc(v.key_metric)}</div>
+        ${(v.missing&&v.missing.length)?`<div class="miss">⚠ 부족한 근거: ${v.missing.map(esc).join(' · ')}</div>`:''}</div>`).join('')
     + `<div class="disc">${esc(d.disclaimer)}</div>`;
 }
 function confirmCard() { $('input').value = '확정'; send(); }

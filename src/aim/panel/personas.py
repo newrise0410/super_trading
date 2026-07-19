@@ -9,8 +9,12 @@ COMMON_RULES = """
 규칙:
 - 아래 [증거]에 있는 수치·사실만 사용하라. 없는 것은 추정하지 말고 "정보 부족"으로 다뤄라.
 - 반드시 아래 JSON 형식으로만 답하라:
-{"stance": "BUY"|"HOLD"|"AVOID", "confidence": 0~100, "thesis": "너의 철학으로 본 2~3문장 논지 (한국어)", "key_metric": "네가 가장 주목한 지표 하나"}
-- 정보가 부족해 네 기준을 적용할 수 없으면 stance는 HOLD, thesis에 무엇이 더 필요한지 적어라."""
+{"stance": "BUY"|"HOLD"|"AVOID", "confidence": 0~100,
+ "thesis": "너의 철학으로 본 2~3문장 논지 (한국어)",
+ "key_metric": "네가 가장 주목한 지표 하나",
+ "missing": ["네 기준 적용에 필요했지만 증거에 없던 정보 (없으면 빈 배열)"]}
+- 네 렌즈의 핵심 데이터가 없으면(missing이 비어있지 않으면) stance는 반드시 HOLD로 기권하고
+  confidence는 40 이하로 하라. 권위를 빌려 데이터 없는 판정을 내리지 마라."""
 
 PERSONAS: list[tuple[str, str, str]] = [
     ("buffett", "워런 버핏", """너는 워런 버핏이다 — 훌륭한 기업을 합리적인 가격에, 영원히 보유할 것처럼.

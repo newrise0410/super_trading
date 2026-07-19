@@ -32,6 +32,24 @@ _EVIDENCE_KEY_RE = re.compile(r"\s*\[[a-z][a-z0-9_]*\.[a-z0-9_]+\]")
 
 def _clean_reply(text: str) -> str:
     return _EVIDENCE_KEY_RE.sub("", text).strip()
+
+
+_NEGATION_WORDS = ("못", "안 ", "안돼", "않", "아직", "보류", "말", "글쎄", "나중")
+
+
+def _is_confirm(text: str) -> bool:
+    """명시적 확정 의도만 인정 — '아직 확정 못 하겠어요'가 저장되던 버그 방지 (Codex 리뷰)."""
+    stripped = text.strip()
+    if any(neg in stripped for neg in _NEGATION_WORDS):
+        return False
+    normalized = re.sub(r"[^\w가-힣]", "", stripped)
+    return normalized in {"확정", "확정할게요", "확정합니다", "확정이요", "확정해줘", "네확정"}
+
+
+def _is_defer(text: str) -> bool:
+    """판단 보류 — 카드 없이 끝내는 것도 정상적인 1급 결론이다."""
+    stripped = text.strip()
+    return any(word in stripped for word in ("보류", "나중에", "판단 안", "결정 안", "확정 못", "확정못"))
 MIN_TURNS_PER_STAGE = 1   # LLM이 [[NEXT]] 신호를 줘도 최소 1답은 필요
 MAX_TURNS_PER_STAGE = 4   # 신호가 없어도 강제 전진 (세션 늘어짐 방지)
 _NEXT_MARKER_RE = re.compile(r"\s*\[\[NEXT\]\]\s*$")
@@ -212,7 +230,25 @@ class SocraEngine:
         }
 
     def _handle_card_stage(self, session, text: str) -> dict[str, Any]:
-        if "확정" in text.strip():
+        if _is_defer(text):
+            # 보류 = 정상 결론 — 카드 없이 종료 + 채워지지 않은 부분을 조사 과제로
+            draft = json.loads(session["card_draft_json"] or "{}")
+            gaps = draft.get("gaps") or []
+            homework = (
+                "\n\n**조사 과제** (다음에 다시 볼 때 준비되면 좋을 것):\n"
+                + "\n".join(f"- {g}" for g in gaps)
+            ) if gaps else ""
+            self._set_stage(session["session_id"], "done")
+            reply = (
+                "판단을 **보류**하셨어요 — 이것도 훌륭한 결론입니다. 👏\n"
+                "모르는 채로 사는 것보다, 알 때까지 사지 않는 것이 원칙이에요."
+                f"{homework}\n\n준비되면 언제든 다시 이 종목으로 대화를 시작하세요."
+            )
+            self._save_turn(session["session_id"], "bot", reply, "done")
+            return {"reply": reply, "legend": [], "stage": "done",
+                    "stage_label": STAGE_LABEL["done"], "deferred": True}
+
+        if _is_confirm(text):
             card_id = self._save_card(session)
             self._set_stage(session["session_id"], "done")
             reply = (

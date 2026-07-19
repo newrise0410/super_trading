@@ -217,6 +217,8 @@ def main() -> None:
             print(f"{icon.get(v['stance'], '')} {v['display']} — {v['stance']} [{v['confidence']}%]"
                   f" · 주목: {v['key_metric']}")
             print(f"   {v['thesis']}")
+            if v.get("missing"):
+                print(f"   ⚠ 부족한 근거: {' · '.join(v['missing'])}")
         print(f"\n_{result['disclaimer']}_")
 
     elif args.command == "cards":

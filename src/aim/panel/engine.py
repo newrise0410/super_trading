@@ -61,12 +61,24 @@ def run_panel(
             verdict = json.loads(text[text.find("{"):text.rfind("}") + 1])
             from aim.socra.engine import _clean_reply  # noqa: PLC0415 — 증거키 누출 방지
 
+            # 검증·강제 기권 (Codex 리뷰): stance enum, confidence 범위,
+            # 데이터 부족(missing) 시 HOLD 강등 + confidence 상한 40
+            stance = str(verdict.get("stance", "HOLD")).upper()
+            if stance not in ("BUY", "HOLD", "AVOID"):
+                stance = "HOLD"
+            confidence = max(0, min(100, int(verdict.get("confidence") or 0)))
+            missing = [str(m) for m in (verdict.get("missing") or [])][:5]
+            if missing:
+                if stance == "BUY":
+                    stance = "HOLD"  # 근거 없는 매수 판정은 기권으로
+                confidence = min(confidence, 40)
+
             verdicts.append({
                 "persona": slug, "display": display,
-                "stance": str(verdict.get("stance", "HOLD")).upper(),
-                "confidence": int(verdict.get("confidence") or 0),
+                "stance": stance, "confidence": confidence,
                 "thesis": _clean_reply(str(verdict.get("thesis", ""))),
                 "key_metric": _clean_reply(str(verdict.get("key_metric", ""))),
+                "missing": missing,
             })
         except Exception:  # noqa: BLE001 — 페르소나별 실패 격리
             logger.exception("persona %s failed", slug)

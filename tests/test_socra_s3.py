@@ -143,6 +143,14 @@ def test_review_recheck_condition_via_llm(conn):
     assert "외인 순매도 전환" in quick.calls[0][1]
 
 
+def test_review_unverifiable_condition_alerts(conn):
+    """데이터 없음 ≠ 안전 — 판단불가 조건은 수동 확인 알림 (false negative 방지)."""
+    _make_card(conn)
+    quick = FakeLLM(['{"triggered": [], "unverifiable": [0]}'])
+    results = review_cards(conn, FakeSettings(), quick=quick, router=None)
+    assert any("감시 불가" in a and "직접 확인" in a for a in results[0]["alerts"])
+
+
 def test_review_quiet_when_nothing_changed(conn):
     _make_card(conn)
     assert review_cards(conn, FakeSettings(), quick=None, router=None) == []

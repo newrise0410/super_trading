@@ -187,6 +187,47 @@ def test_legend_caps_at_five(conn):
     assert len(detect_terms(conn, text)) == 5
 
 
+# ── 퀵픽스: 확정 의도·보류 (Codex 리뷰) ───────────────────────
+
+def test_negated_confirm_does_not_save(conn):
+    """'아직 확정 못 하겠어요'가 카드로 저장되던 버그 방지."""
+    quick = NextLLM()
+    engine = _engine(conn, quick, FakeLLM([CARD_JSON, CARD_JSON]))
+    sid = engine.start_session("삼성전자")["session_id"]
+    for i in range(len(STAGES)):
+        engine.handle_message(sid, f"답 {i}")
+
+    r = engine.handle_message(sid, "아직 확정 못 하겠어요")
+    assert conn.execute("SELECT COUNT(*) AS n FROM decision_cards").fetchone()["n"] == 0
+    # '확정 못' → 보류 처리로 종료
+    assert r["stage"] == "done" and r.get("deferred") is True
+
+
+def test_defer_is_first_class_conclusion(conn):
+    """'보류' = 카드 없이 정상 종료 + gaps를 조사 과제로 제시."""
+    card = json.loads(CARD_JSON)
+    card["gaps"] = ["손절선을 정하지 못함"]
+    engine = _engine(conn, NextLLM(), FakeLLM([json.dumps(card, ensure_ascii=False)]))
+    sid = engine.start_session("삼성전자")["session_id"]
+    for i in range(len(STAGES)):
+        engine.handle_message(sid, f"답 {i}")
+
+    r = engine.handle_message(sid, "보류할게요")
+    assert r["deferred"] is True
+    assert "조사 과제" in r["reply"] and "손절선" in r["reply"]
+    assert conn.execute("SELECT COUNT(*) AS n FROM decision_cards").fetchone()["n"] == 0
+
+
+def test_exact_confirm_still_works(conn):
+    engine = _engine(conn, NextLLM(), FakeLLM([CARD_JSON]))
+    sid = engine.start_session("삼성전자")["session_id"]
+    for i in range(len(STAGES)):
+        engine.handle_message(sid, f"답 {i}")
+    r = engine.handle_message(sid, "확정!")
+    assert "card_id" in r
+    assert conn.execute("SELECT COUNT(*) AS n FROM decision_cards").fetchone()["n"] == 1
+
+
 # ── 지식 모델 (S2) ────────────────────────────────────────────
 
 def test_legend_omits_demonstrated_and_records_exposure(conn):

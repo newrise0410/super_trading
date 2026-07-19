@@ -25,9 +25,12 @@ ALERT_COOLDOWN_DAYS = 3
 WEB_BASE = "http://localhost:8501"
 
 RECHECK_EVAL = """사용자가 정한 재검토 조건 목록과 최신 시장 증거다.
-각 조건이 현재 증거상 '발동'했는지 판정하라. 증거로 판단 불가한 조건은 발동 아님으로.
+각 조건을 셋 중 하나로 분류하라:
+- 발동: 증거상 조건이 충족됨
+- 미발동: 증거상 조건이 충족되지 않음
+- 판단불가: 증거에 이 조건을 판단할 데이터가 없음 (데이터 없음 ≠ 안전 — 반드시 구분하라)
 
-반드시 JSON만: {{"triggered": [발동한 조건의 0-기반 인덱스 목록]}}
+반드시 JSON만: {{"triggered": [발동 인덱스], "unverifiable": [판단불가 인덱스]}}
 
 [재검토 조건]
 {conditions}
@@ -122,10 +125,17 @@ def _review_one(conn, card, collector, quick) -> list[tuple[str, str]]:
                 ),
             )
             text = re.sub(r"```(?:json)?|```", "", raw)
-            triggered = json.loads(text[text.find("{"):text.rfind("}") + 1]).get("triggered", [])
-            for idx in triggered:
+            parsed = json.loads(text[text.find("{"):text.rfind("}") + 1])
+            for idx in parsed.get("triggered", []):
                 if 0 <= int(idx) < len(conditions):
                     candidates.append((f"recheck:{idx}", f"재검토 조건 발동 — \"{conditions[int(idx)]}\""))
+            # 판단불가 = 데이터 부재 ≠ 안전 (false negative 방지 — Codex 리뷰)
+            for idx in parsed.get("unverifiable", []):
+                if 0 <= int(idx) < len(conditions):
+                    candidates.append((
+                        f"recheck_unknown:{idx}",
+                        f"재검토 조건 감시 불가 (데이터 없음) — \"{conditions[int(idx)]}\" 은(는) 직접 확인이 필요해요",
+                    ))
         except Exception:  # noqa: BLE001
             logger.exception("recheck eval failed for %s", card["card_id"])
 

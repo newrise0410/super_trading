@@ -99,6 +99,29 @@ def test_persona_failure_isolated(conn):
     assert len(result["verdicts"]) == len(PERSONAS) - 1    # 1명 탈락, 나머지 진행
 
 
+def test_verdict_validation_and_forced_abstain(conn):
+    """검증: 잘못된 stance→HOLD, confidence 클램프, missing 있으면 BUY→HOLD·conf≤40."""
+
+    class BadLLM(PanelFakeLLM):
+        def complete(self, system, user):
+            self.calls.append((system, user))
+            idx = len(self.calls) - 1
+            if idx == 0:   # 데이터 없는데 BUY 90 → 강제 기권 대상
+                return json.dumps({"stance": "BUY", "confidence": 90, "thesis": "t",
+                                   "key_metric": "m", "missing": ["EPS 성장률"]})
+            if idx == 1:   # 엉뚱한 stance
+                return json.dumps({"stance": "STRONG_BUY", "confidence": 300,
+                                   "thesis": "t", "key_metric": "m"})
+            return json.dumps({"stance": "HOLD", "confidence": 50, "thesis": "t",
+                               "key_metric": "m", "missing": []})
+
+    result = run_panel(conn, FakeSettings(), "005930", BadLLM(), run_date="2026-07-19")
+    v0, v1 = result["verdicts"][0], result["verdicts"][1]
+    assert v0["stance"] == "HOLD" and v0["confidence"] <= 40      # 강제 기권
+    assert v0["missing"] == ["EPS 성장률"]
+    assert v1["stance"] == "HOLD" and v1["confidence"] == 100      # enum·범위 정규화
+
+
 # ── 페르소나 시뮬레이션 ───────────────────────────────────────
 
 PRICES = {"005930": (255000.0, -8.77), "069500": (109000.0, -6.63)}
