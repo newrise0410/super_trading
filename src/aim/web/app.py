@@ -12,7 +12,8 @@ from pathlib import Path
 
 from aim.config import Settings
 
-_PAGE_PATH = Path(__file__).parent / "dashboard.html"
+_DASH_PATH = Path(__file__).parent / "dashboard.html"
+_SOCRA_PATH = Path(__file__).parent / "socra.html"
 
 
 # ── 데이터 함수 (순수) ────────────────────────────────────────────
@@ -79,6 +80,35 @@ def signals_data(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
     )]
 
 
+def socra_sessions_list(conn: sqlite3.Connection, user_id: str = "local") -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT session_id, symbol, name, stage, updated_at FROM socra_sessions"
+        " WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50", (user_id,),
+    )]
+
+
+def socra_session_detail(conn: sqlite3.Connection, session_id: str) -> dict | None:
+    session = conn.execute(
+        "SELECT * FROM socra_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if session is None:
+        return None
+    turns = [dict(r) for r in conn.execute(
+        "SELECT role, content, stage, created_at FROM socra_turns"
+        " WHERE session_id = ? ORDER BY id", (session_id,),
+    )]
+    card = conn.execute(
+        "SELECT * FROM decision_cards WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+        (session_id,),
+    ).fetchone()
+    return {
+        "session": dict(session),
+        "turns": turns,
+        "card_draft": json.loads(session["card_draft_json"]) if session["card_draft_json"] else None,
+        "card": dict(card) if card else None,
+    }
+
+
 # ── FastAPI 앱 ───────────────────────────────────────────────────
 
 
@@ -88,16 +118,79 @@ def create_app(settings: Settings):
 
     from aim.storage import db  # noqa: PLC0415
 
-    app = FastAPI(title="AIM Dashboard")
+    from fastapi import Body  # noqa: PLC0415
+
+    from aim.llm import build_llm  # noqa: PLC0415
+    from aim.socra.concepts import seed_concepts  # noqa: PLC0415
+    from aim.socra.engine import SocraEngine  # noqa: PLC0415
+
+    app = FastAPI(title="SOCRA")
 
     def _conn() -> sqlite3.Connection:
         conn = db.connect(settings.db_path)
         db.migrate(conn)
         return conn
 
+    # 개념 사전 시드 (멱등) + LLM 클라이언트 (재사용)
+    _c = _conn()
+    seed_concepts(_c)
+    _c.close()
+    try:
+        quick_llm = build_llm(settings, "quick")
+        deep_llm = build_llm(settings, "deep")
+    except RuntimeError:  # LLM 미설정 — 대시보드만 동작
+        quick_llm = deep_llm = None
+
     @app.get("/", response_class=HTMLResponse)
-    def page() -> str:
-        return _PAGE_PATH.read_text(encoding="utf-8")
+    def socra_page() -> str:
+        return _SOCRA_PATH.read_text(encoding="utf-8")
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dash_page() -> str:
+        return _DASH_PATH.read_text(encoding="utf-8")
+
+    @app.get("/api/socra/sessions")
+    def sessions_list():
+        conn = _conn()
+        try:
+            return socra_sessions_list(conn)
+        finally:
+            conn.close()
+
+    @app.get("/api/socra/sessions/{session_id}")
+    def session_detail(session_id: str):
+        conn = _conn()
+        try:
+            data = socra_session_detail(conn, session_id)
+        finally:
+            conn.close()
+        if data is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return data
+
+    @app.post("/api/socra/sessions")
+    def session_create(payload: dict = Body(...)):
+        if quick_llm is None:
+            return JSONResponse({"error": "LLM 미설정"}, status_code=503)
+        conn = _conn()
+        try:
+            return SocraEngine(conn, settings, quick_llm, deep_llm).start_session(
+                str(payload.get("query", ""))
+            )
+        finally:
+            conn.close()
+
+    @app.post("/api/socra/sessions/{session_id}/messages")
+    def session_message(session_id: str, payload: dict = Body(...)):
+        if quick_llm is None:
+            return JSONResponse({"error": "LLM 미설정"}, status_code=503)
+        conn = _conn()
+        try:
+            return SocraEngine(conn, settings, quick_llm, deep_llm).handle_message(
+                session_id, str(payload.get("text", ""))
+            )
+        finally:
+            conn.close()
 
     @app.get("/api/overview")
     def overview():

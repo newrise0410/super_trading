@@ -14,6 +14,8 @@ class IntradayQuote:
     cum_volume: float      # 당일 누적 거래량 (주)
     cum_value: float       # 당일 누적 거래대금 (억원)
     at: str                # "YYYY-MM-DD HH:MM:SS" (KST)
+    per: float | None = None   # 밸류에이션 (KIS 현재가 응답 포함 — 소크라 레슨 재료)
+    pbr: float | None = None
 
 
 @dataclass(frozen=True)

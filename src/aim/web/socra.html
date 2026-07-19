@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>소크라 — 질문으로 배우는 투자</title>
+<style>
+  /* 클로드 데스크톱형 레이아웃 · 비비드 팔레트 */
+  :root {
+    color-scheme: light;
+    --bg: #FAF9F5; --panel: #F1EFE8; --surface: #FFFFFF;
+    --ink: #17150F; --ink2: #57534A; --muted: #8F8B80;
+    --border: rgba(23,21,15,.09);
+    --accent: #FF4D26; --accent-soft: #FFE9E2; --accent-ink: #C2330F;
+    --accent2: #7B5CFF; --accent2-soft: #EFEAFF;
+    --good: #00B37E;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #201F1B; --panel: #19181399; --surface: #262520;
+      --ink: #F4F2EC; --ink2: #BEB9AC; --muted: #8F8B80;
+      --border: rgba(255,255,255,.09);
+      --accent: #FF6B45; --accent-soft: #3D2A22; --accent-ink: #FF8A6B;
+      --accent2: #9B85FF; --accent2-soft: #2C2740;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--ink);
+         font: 15px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #app { display: grid; grid-template-columns: 264px 1fr 340px; height: 100vh; }
+
+  /* ── 사이드바 ── */
+  #side { background: var(--panel); border-right: 1px solid var(--border);
+          display: flex; flex-direction: column; padding: 14px; gap: 12px; }
+  .logo { font-weight: 800; font-size: 17px; padding: 4px 8px; letter-spacing: -.3px; }
+  .logo em { color: var(--accent); font-style: normal; }
+  .logo .sub { display:block; font-size: 11px; font-weight: 500; color: var(--muted); }
+  #new-btn { background: var(--accent); color: #fff; border: 0; border-radius: 10px;
+             padding: 10px; font-weight: 700; font-size: 14px; cursor: pointer; }
+  #new-btn:hover { filter: brightness(1.07); }
+  #sess-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .sess { padding: 9px 10px; border-radius: 9px; cursor: pointer; font-size: 13.5px;
+          color: var(--ink2); display: flex; justify-content: space-between; gap: 6px; }
+  .sess:hover { background: var(--border); }
+  .sess.active { background: var(--surface); color: var(--ink); font-weight: 600;
+                 box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .sess .st { font-size: 11px; color: var(--accent); white-space: nowrap; }
+  .side-foot { font-size: 11.5px; color: var(--muted); padding: 0 8px; }
+  .side-foot a { color: var(--muted); }
+
+  /* ── 메인 채팅 ── */
+  #main { display: flex; flex-direction: column; min-width: 0; }
+  #stagebar { display: none; justify-content: center; gap: 6px; padding: 14px 0 4px; }
+  .stg { font-size: 12px; padding: 4px 12px; border-radius: 99px; color: var(--muted);
+         border: 1.5px solid var(--border); background: var(--surface); }
+  .stg.done { border-color: var(--accent2); color: var(--accent2); background: var(--accent2-soft); }
+  .stg.now  { border-color: var(--accent); color: #fff; background: var(--accent); font-weight: 700; }
+  #chat { flex: 1; overflow-y: auto; padding: 20px 0 12px; }
+  .col { max-width: 740px; margin: 0 auto; padding: 0 28px; }
+  .msg { margin-bottom: 22px; }
+  .msg.bot .txt { font-family: Georgia, "Noto Serif KR", serif; font-size: 16.5px;
+                  line-height: 1.75; white-space: pre-wrap; }
+  .msg.user { display: flex; justify-content: flex-end; }
+  .msg.user .txt { background: var(--accent-soft); color: var(--ink);
+                   border-radius: 16px 16px 4px 16px; padding: 10px 16px; max-width: 78%;
+                   white-space: pre-wrap; }
+  .legend { margin-top: 12px; border-left: 3px solid var(--accent2);
+            background: var(--accent2-soft); border-radius: 0 10px 10px 0;
+            padding: 10px 14px; font-size: 13px; color: var(--ink2); }
+  .legend div { margin: 2px 0; }
+  .legend b { color: var(--accent2); font-weight: 700; }
+  .typing { color: var(--muted); font-size: 14px; }
+  .typing::after { content: '●●●'; animation: blink 1.2s infinite; letter-spacing: 3px; }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  /* 빈 상태 (첫 화면) */
+  #empty { flex: 1; display: flex; flex-direction: column; justify-content: center;
+           align-items: center; gap: 18px; padding: 24px; text-align: center; }
+  #empty h1 { font-family: Georgia, "Noto Serif KR", serif; font-size: 30px; font-weight: 650; }
+  #empty h1 em { color: var(--accent); font-style: normal; }
+  #empty p { color: var(--ink2); max-width: 460px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .chip { border: 1.5px solid var(--border); background: var(--surface); border-radius: 99px;
+          padding: 7px 14px; font-size: 13.5px; color: var(--ink2); cursor: pointer; }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* 입력창 */
+  #inputbar { padding: 12px 0 22px; }
+  .inputbox { display: flex; gap: 10px; background: var(--surface);
+              border: 1.5px solid var(--border); border-radius: 16px; padding: 10px 12px;
+              box-shadow: 0 4px 20px rgba(0,0,0,.05); }
+  .inputbox:focus-within { border-color: var(--accent); }
+  #input { flex: 1; border: 0; outline: 0; background: transparent; resize: none;
+           font: 15px/1.5 inherit; color: var(--ink); max-height: 140px; }
+  #send { background: var(--accent); color: #fff; border: 0; border-radius: 10px;
+          width: 38px; height: 38px; font-size: 17px; cursor: pointer; align-self: flex-end; }
+  #send:disabled { opacity: .4; cursor: default; }
+
+  /* ── 결정 카드 패널 ── */
+  #cardpane { border-left: 1px solid var(--border); background: var(--panel);
+              padding: 18px 16px; overflow-y: auto; }
+  #cardpane h2 { font-size: 13px; color: var(--muted); text-transform: uppercase;
+                 letter-spacing: .6px; margin-bottom: 12px; }
+  .card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 14px;
+          padding: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.05); }
+  .card .sym { font-weight: 800; font-size: 16px; margin-bottom: 10px; }
+  .card .sym .v { color: var(--accent); font-size: 12px; margin-left: 6px; }
+  .f { margin-bottom: 12px; }
+  .f .k { font-size: 11.5px; color: var(--muted); letter-spacing: .4px; }
+  .f .val { font-size: 14px; margin-top: 2px; white-space: pre-wrap; }
+  .f .val.num { font-size: 18px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .f .why { font-size: 12.5px; color: var(--ink2); margin-top: 2px; }
+  .f .pending { color: var(--muted); font-style: italic; font-size: 13px; }
+  .gaps { border-left: 3px solid var(--accent); background: var(--accent-soft);
+          border-radius: 0 8px 8px 0; padding: 8px 12px; font-size: 12.5px;
+          color: var(--accent-ink); margin-top: 8px; }
+  #confirm { width: 100%; margin-top: 12px; background: var(--good); color: #fff; border: 0;
+             border-radius: 10px; padding: 11px; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .saved { text-align: center; color: var(--good); font-weight: 700; margin-top: 12px; }
+  .empty-card { color: var(--muted); font-size: 13px; line-height: 1.7; padding: 8px 2px; }
+
+  @media (max-width: 1080px) { #app { grid-template-columns: 220px 1fr; } #cardpane { display: none; } }
+  @media (max-width: 720px)  { #app { grid-template-columns: 1fr; } #side { display: none; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <div class="logo">🏛️ 소크라<em>.</em><span class="sub">질문으로 배우는 투자</span></div>
+    <button id="new-btn" onclick="showEmpty()">＋ 새 고민</button>
+    <div id="sess-list"></div>
+    <div class="side-foot"><a href="/dashboard">대시보드 →</a></div>
+  </aside>
+
+  <main id="main">
+    <div id="empty">
+      <h1>어떤 주식이 <em>고민</em>이세요?</h1>
+      <p>정답을 드리지 않아요. 대신 좋은 질문을 드릴게요 —<br>
+         대화가 끝나면 <b>당신만의 판단 기준</b>이 카드로 남습니다.</p>
+      <div class="col" style="width:100%;max-width:560px">
+        <div class="inputbox">
+          <textarea id="input0" rows="1" placeholder="예: 삼성전자 살까 말까?  ·  005930"></textarea>
+          <button id="send0" onclick="createFromEmpty()">↑</button>
+        </div>
+      </div>
+      <div class="chips">
+        <span class="chip" onclick="startWith('삼성전자 살까 말까?')">삼성전자 살까 말까?</span>
+        <span class="chip" onclick="startWith('SK하이닉스 지금 사도 될까?')">SK하이닉스 지금 사도 될까?</span>
+        <span class="chip" onclick="startWith('카카오 물타기 해야 하나?')">카카오 물타기 해야 하나?</span>
+      </div>
+    </div>
+
+    <div id="stagebar"></div>
+    <div id="chat" style="display:none"><div class="col" id="msgs"></div></div>
+    <div id="inputbar" style="display:none"><div class="col">
+      <div class="inputbox">
+        <textarea id="input" rows="1" placeholder="생각을 편하게 적어주세요 — 모르면 '몰라요'도 좋은 답이에요"></textarea>
+        <button id="send" onclick="send()">↑</button>
+      </div>
+    </div></div>
+  </main>
+
+  <aside id="cardpane">
+    <h2>📌 나의 결정 카드</h2>
+    <div id="card-body"><div class="empty-card">
+      대화가 진행되면 여기에 <b>당신이 직접 세운</b> 논지·목표가·손절 기준이 채워집니다.<br><br>
+      소크라는 서기일 뿐 — 결론은 언제나 당신의 것이에요.
+    </div></div>
+  </aside>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let SID = null, BUSY = false;
+const STAGES = [["business","① 사업"],["valuation","② 가치"],["risk","③ 리스크"],["exit","④ 출구"],["card","카드"]];
+
+async function api(url, body) {
+  const r = await fetch(url, body ? {method:'POST', headers:{'Content-Type':'application/json'},
+                                     body: JSON.stringify(body)} : undefined);
+  return r.json();
+}
+
+/* ── 세션 목록 ── */
+async function loadSessions() {
+  const rows = await api('/api/socra/sessions');
+  $('sess-list').innerHTML = rows.map(s =>
+    `<div class="sess ${s.session_id===SID?'active':''}" onclick="openSession('${s.session_id}')">
+       <span>${s.name}</span><span class="st">${stageLabel(s.stage)}</span></div>`).join('');
+}
+function stageLabel(st) { return ({business:'①',valuation:'②',risk:'③',exit:'④',card:'카드',done:'✓'})[st]||st; }
+
+/* ── 화면 전환 ── */
+function showEmpty() { SID=null; $('empty').style.display='flex'; $('chat').style.display='none';
+  $('inputbar').style.display='none'; $('stagebar').style.display='none'; loadSessions(); resetCard(); }
+function showChat() { $('empty').style.display='none'; $('chat').style.display='block';
+  $('inputbar').style.display='block'; $('stagebar').style.display='flex'; }
+
+function renderStagebar(stage) {
+  const idx = STAGES.findIndex(([k])=>k===stage);
+  $('stagebar').innerHTML = STAGES.map(([k,label],i) =>
+    `<span class="stg ${i<idx||stage==='done'?'done':(k===stage?'now':'')}">${label}</span>`).join('');
+}
+
+/* ── 메시지 렌더 ── */
+function addUser(text) {
+  $('msgs').insertAdjacentHTML('beforeend',
+    `<div class="msg user"><div class="txt"></div></div>`);
+  $('msgs').lastElementChild.querySelector('.txt').textContent = text;
+  scrollDown();
+}
+function addTyping() {
+  $('msgs').insertAdjacentHTML('beforeend', `<div class="msg bot" id="tp"><div class="typing"></div></div>`);
+  scrollDown();
+}
+function addBot(text, legend, instant) {
+  const tp = $('tp'); if (tp) tp.remove();
+  $('msgs').insertAdjacentHTML('beforeend', `<div class="msg bot"><div class="txt"></div></div>`);
+  const el = $('msgs').lastElementChild.querySelector('.txt');
+  const finish = () => { if (legend && legend.length) {
+    el.parentElement.insertAdjacentHTML('beforeend',
+      `<div class="legend">${legend.map(l=>`<div>📖 <b>${l.term}</b> — ${l.short_def}</div>`).join('')}</div>`);
+  } scrollDown(); };
+  if (instant) { el.textContent = text; finish(); return; }
+  let i = 0;                                     /* 타자기 효과 */
+  const tick = () => { el.textContent = text.slice(0, i); i += 3;
+    scrollDown();
+    if (i <= text.length + 2) requestAnimationFrame(tick); else finish(); };
+  tick();
+}
+function scrollDown() { $('chat').scrollTop = $('chat').scrollHeight; }
+
+/* ── 세션 생성/열기/전송 ── */
+function startWith(q) { $('input0').value = q; createFromEmpty(); }
+async function createFromEmpty() {
+  const q = $('input0').value.trim(); if (!q || BUSY) return;
+  BUSY = true; $('send0').disabled = true;
+  showChat(); $('msgs').innerHTML=''; resetCard(); addUser(q); addTyping();
+  const d = await api('/api/socra/sessions', {query: q});
+  BUSY = false; $('send0').disabled = false; $('input0').value='';
+  if (d.error) { addBot(d.error, [], true); return; }
+  SID = d.session_id; renderStagebar(d.stage); addBot(d.reply, d.legend);
+  loadSessions(); $('input').focus();
+}
+async function openSession(id) {
+  SID = id; showChat(); resetCard();
+  const d = await api('/api/socra/sessions/'+id);
+  renderStagebar(d.session.stage);
+  $('msgs').innerHTML = '';
+  for (const t of d.turns) {
+    if (t.role === 'user') addUser(t.content); else addBot(t.content, [], true);
+  }
+  if (d.card) renderCard(JSON.parse(JSON.stringify(d.card)), true, d.session);
+  else if (d.card_draft) renderCard(d.card_draft, false, d.session);
+  loadSessions(); scrollDown();
+}
+async function send() {
+  const text = $('input').value.trim(); if (!text || BUSY || !SID) return;
+  BUSY = true; $('send').disabled = true; $('input').value = '';
+  addUser(text); addTyping();
+  const d = await api(`/api/socra/sessions/${SID}/messages`, {text});
+  BUSY = false; $('send').disabled = false;
+  if (d.error) { addBot(d.error, [], true); return; }
+  renderStagebar(d.stage); addBot(d.reply, d.legend);
+  if (d.card_draft) { const s = await api('/api/socra/sessions/'+SID); renderCard(d.card_draft, false, s.session); }
+  if (d.card_id) markSaved();
+  loadSessions(); $('input').focus();
+}
+
+/* ── 결정 카드 패널 ── */
+function resetCard() { $('card-body').innerHTML =
+  `<div class="empty-card">대화가 진행되면 여기에 <b>당신이 직접 세운</b> 논지·목표가·손절 기준이 채워집니다.<br><br>소크라는 서기일 뿐 — 결론은 언제나 당신의 것이에요.</div>`; }
+function field(k, val, why, num) {
+  const v = (val===null||val===undefined||val==='')
+    ? `<div class="pending">아직 대화에서 안 나왔어요</div>`
+    : `<div class="val ${num?'num':''}">${num?Number(val).toLocaleString('ko-KR'):val}</div>`
+      + (why?`<div class="why">└ ${why}</div>`:'');
+  return `<div class="f"><div class="k">${k}</div>${v}</div>`;
+}
+function renderCard(c, saved, sess) {
+  const name = sess ? `${sess.name}` : '';
+  const recheck = (typeof c.recheck_conditions === 'string')
+    ? JSON.parse(c.recheck_conditions || '[]') : (c.recheck_conditions || []);
+  $('card-body').innerHTML = `<div class="card">
+    <div class="sym">${name}${saved?`<span class="v">v${c.version||1} 저장됨</span>`:''}</div>
+    ${field('매수 논지', c.thesis)}
+    ${field('목표가', c.target_price, c.target_reason, true)}
+    ${field('손절선', c.stop_price, c.stop_reason, true)}
+    ${field('재검토 조건', recheck.length ? recheck.map(r=>'· '+r).join('\n') : null)}
+    ${field('나의 확신도', c.confidence_self!=null ? c.confidence_self+'%' : null)}
+    ${(c.gaps&&c.gaps.length)?`<div class="gaps">✍️ 미완성: ${c.gaps.join(' / ')}</div>`:''}
+    ${saved?`<div class="saved">✓ 감시 시작 — 근거가 변하면 알려드려요</div>`
+           :`<button id="confirm" onclick="confirmCard()">이대로 확정하기</button>`}
+  </div>`;
+}
+function confirmCard() { $('input').value = '확정'; send(); }
+function markSaved() { const b = $('confirm'); if (b) b.outerHTML = `<div class="saved">✓ 감시 시작 — 근거가 변하면 알려드려요</div>`; }
+
+/* 입력 UX */
+for (const [inp, btn] of [['input','send'],['input0','send0']]) {
+  $(inp).addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $(btn).click(); }
+  });
+  $(inp).addEventListener('input', e => {
+    e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px';
+  });
+}
+loadSessions();
+</script>
+</body>
+</html>
