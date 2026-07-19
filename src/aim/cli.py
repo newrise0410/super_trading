@@ -51,6 +51,8 @@ def main() -> None:
     p_watch.add_argument("--mock", action="store_true", help="데모 시나리오 재생 (키 불필요)")
     p_watch.add_argument("--interval", type=int, default=30, help="폴링 주기(초)")
 
+    sub.add_parser("baseline-rebuild", help="관측치로 거래량 baseline 재계산 (야간/수동)")
+
     sub.add_parser("test-telegram", help="텔레그램 연결 테스트 (chat_id 미설정 시 자동 감지)")
     sub.add_parser("test-discord", help="디스코드 웹훅 연결 테스트")
     sub.add_parser("discord-setup", help="디스코드 서버 프로비저닝 — 채널·웹훅 자동 생성 + .env 기록")
@@ -160,6 +162,7 @@ def main() -> None:
                     return
 
                 from aim.delivery.router import build_router
+                from aim.watch.baseline import rebuild_baselines
                 from aim.watch.dart import OpenDartDisclosureProvider
                 from aim.watch.provider import NullIntradayProvider
 
@@ -168,12 +171,38 @@ def main() -> None:
                 dart = OpenDartDisclosureProvider(settings.dart_api_key, conn)
                 dart.prime()  # 기동 시 당일 기존 공시는 조용히 처리 (알림 폭주 방지)
 
-                tracker = WatchTracker(conn, NullIntradayProvider(), dart, router)
-                interval = max(args.interval, 60)  # DART 쿼터 보호 — 최소 60초
-                print(f"공시 추적 시작 (interval {interval}s, 창 07:00~19:00) — Ctrl+C로 중단")
+                # KIS 키가 있으면 장중 시세 폴링 활성 (거래량 서지·급변·COMBO)
+                if settings.kis_app_key and settings.kis_app_secret:
+                    from aim.data.kis.auth import KISAuth
+                    from aim.data.kis.intraday import KISIntradayProvider
+
+                    auth = KISAuth(settings.kis_app_key, settings.kis_app_secret, settings.kis_env)
+                    quote_provider = KISIntradayProvider(conn, auth)
+                    interval = max(args.interval, 30)
+                    updated = rebuild_baselines(conn)
+                    print(f"KIS 시세 폴링 활성 (env={settings.kis_env}) · baseline {updated}개 슬롯 갱신")
+                else:
+                    quote_provider = NullIntradayProvider()
+                    interval = max(args.interval, 60)  # DART 쿼터 보호
+                    print("KIS 키 미설정 — 공시 전용 모드")
+
+                tracker = WatchTracker(conn, quote_provider, dart, router)
+                print(f"추적 시작 (interval {interval}s, 창 07:00~19:00 · 시세는 09:00~15:30) — Ctrl+C로 중단")
                 tracker.run_forever(poll_interval_sec=interval, window=("07:00", "19:00"))
         finally:
             conn.close()
+
+    elif args.command == "baseline-rebuild":
+        from aim.storage import db
+        from aim.watch.baseline import rebuild_baselines
+
+        conn = db.connect(settings.db_path)
+        try:
+            db.migrate(conn)
+            updated = rebuild_baselines(conn)
+        finally:
+            conn.close()
+        print(f"baseline 갱신: {updated}개 (symbol, slot)")
 
     elif args.command == "test-telegram":
         import requests

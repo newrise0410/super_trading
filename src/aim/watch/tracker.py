@@ -17,6 +17,7 @@ from aim.delivery.router import NotificationRouter
 from aim.knowledge import KnowledgeStore
 from aim.storage.repositories.watch import (
     BaselineRepository,
+    ObservationsRepository,
     SignalsRepository,
     WatchlistRepository,
 )
@@ -56,10 +57,13 @@ class WatchTracker:
         z_threshold: float = 3.0,
         price_threshold_pct: float = 3.0,
         cooldown_minutes: int = 30,
+        quote_window: tuple[str, str] = ("09:00", "15:30"),  # 시세 폴링은 장중만
     ) -> None:
         self._watchlist = WatchlistRepository(conn)
         self._signals = SignalsRepository(conn)
         self._baselines = BaselineRepository(conn)
+        self._observations = ObservationsRepository(conn)
+        self._quote_window = quote_window
         self._knowledge = KnowledgeStore(conn)
         self._cooldown = Cooldown(self._signals, minutes=cooldown_minutes)
         self._quotes = quote_provider
@@ -84,9 +88,17 @@ class WatchTracker:
         surges: dict[str, Signal] = {}
         disclosures_by_symbol: dict[str, Signal] = {}
 
-        # 1) 시세 폴링 → 거래량 서지·단기 급변
-        for quote in self._quotes.snapshot(symbols):
+        # 1) 시세 폴링 → 거래량 서지·단기 급변 (장중에만)
+        hhmm = now.strftime("%H:%M")
+        in_quote_session = self._quote_window[0] <= hhmm <= self._quote_window[1]
+        quotes = self._quotes.snapshot(symbols) if in_quote_session else []
+        for quote in quotes:
             quote_at = datetime.strptime(quote.at, FMT)
+
+            # 관측치 축적 — 야간 rebuild_baselines()의 원천 (같은 슬롯은 마지막 값 유지)
+            self._observations.record(
+                quote.symbol, quote_at.date().isoformat(), slot_of(quote_at), quote.cum_volume
+            )
 
             baseline = self._baselines.get(quote.symbol, slot_of(quote_at))
             if baseline is not None:

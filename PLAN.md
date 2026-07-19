@@ -282,4 +282,5 @@ profile 365d · business 180d · financials 120d(분기) · risk 90d · thesis 6
 **원칙**: 감지는 100% 룰(비용 제로) / LLM은 시그널 발생 시 해석 코멘트만(P2+) / 시그널 → knowledge catalyst 팩트 자동 축적 / DB 기반 쿨다운 30분(재알림 억제) / 시그널 이력 = 적중률 캘리브레이션·모멘텀 전략 진입신호 원천(P3)
 **구현**: `src/aim/watch/` + `003_watchlist.sql` + CLI(`aim watchlist add/list/rm`, `aim watch --mock`).
 **② 완료 (OpenDART 폴러, `watch/dart.py` + `004_dart_seen.sql`)**: list.json 당일 최신순 페이징, rcept_no 중복제거(dart_seen, 7일 프루닝), 기처리 접수번호 도달 시 조기종료(평시 1콜/폴링), prime()으로 기동 시 알림 폭주 방지, 쿼터(020)·네트워크 오류 격리. `aim watch` = 공시 전용 실전 모드(NullIntradayProvider, 최소 60초 간격, 창 07:00~19:00). 유의: list API는 접수 '일자'만 제공(시각 없음).
-남은 것: ③ KIS 폴링 프로바이더 + pykrx 분봉 baseline 백필 + 야간 baseline 갱신 배치
+**③ 완료 (KIS 장중 폴링, `data/kis/` + `005_intraday_observations.sql`)**: KISAuth(토큰 일1회 발급·파일 캐싱·만료 10분 마진, 발급 시 카톡 알림 유의), KISIntradayProvider(현재가 FHKST01010100 폴링, 종목별 실패 격리, 호출 간 0.06s), 관측치 축적→`rebuild_baselines`(최근 20일·최소 3일 표본·당일 제외 — 오늘의 서지가 기준선 오염 방지), `aim watch`에서 KIS 키 감지 시 자동 활성(시세는 09:00~15:30만 폴링). 실키 라이브 검증 완료.
+**콜드스타트**: baseline은 관측 3일 축적 후부터 서지 시그널 활성 — 그 전엔 급변·공시 시그널만 동작

@@ -55,6 +55,19 @@ class SignalsRepository(BaseRepository):
         ).fetchall()
 
 
+class ObservationsRepository(BaseRepository):
+    """장중 폴링 관측치 — 시간대별 누적거래량 축적 (baseline 학습의 원천)."""
+
+    def record(self, symbol: str, obs_date: str, time_slot: str, cum_volume: float) -> None:
+        self.conn.execute(
+            "INSERT INTO intraday_observations (symbol, obs_date, time_slot, cum_volume)"
+            " VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(symbol, obs_date, time_slot) DO UPDATE SET cum_volume = excluded.cum_volume",
+            (symbol, obs_date, time_slot, cum_volume),
+        )
+        self.conn.commit()
+
+
 class BaselineRepository(BaseRepository):
     def upsert(self, symbol: str, time_slot: str, avg: float, std: float, days: int) -> None:
         self.conn.execute(
