@@ -43,6 +43,41 @@ def _default_fetch(params: dict[str, Any]) -> dict[str, Any]:
     return resp.json()
 
 
+def fetch_disclosures_for(
+    api_key: str, symbols: set[str], *, days_back: int = 1, fetch_json: FetchJson | None = None
+) -> list[Disclosure]:
+    """장전 브리핑용 무상태 조회 — 최근 N일 공시 중 지정 종목만 (dedup 없음, 실패 시 빈 목록)."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    fetch = fetch_json or _default_fetch
+    try:
+        data = fetch({
+            "crtfc_key": api_key,
+            "bgn_de": (date.today() - timedelta(days=days_back)).strftime("%Y%m%d"),
+            "end_de": date.today().strftime("%Y%m%d"),
+            "page_no": 1, "page_count": 100,
+        })
+        if data.get("status") != STATUS_OK:
+            return []
+        result = []
+        for item in data.get("list") or []:
+            stock_code = (item.get("stock_code") or "").strip()
+            if stock_code not in symbols:
+                continue
+            rcept_dt = str(item.get("rcept_dt", ""))
+            result.append(Disclosure(
+                symbol=stock_code,
+                corp_name=(item.get("corp_name") or "").strip(),
+                title=(item.get("report_nm") or "").strip(),
+                filed_at=f"{rcept_dt[:4]}-{rcept_dt[4:6]}-{rcept_dt[6:]}",
+                url=VIEWER_URL.format(rcept_no=item.get("rcept_no", "")),
+            ))
+        return result
+    except Exception:  # noqa: BLE001
+        logger.exception("open-briefing disclosure fetch failed")
+        return []
+
+
 class OpenDartDisclosureProvider:
     def __init__(
         self,

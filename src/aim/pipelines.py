@@ -102,3 +102,100 @@ def run_us_close_briefing(
 
     router.send("us", f"🇺🇸 미국장 마감 브리핑 {date}", master_md)
     return report_id
+
+
+def run_kr_open_briefing(
+    settings: Settings, router: NotificationRouter, date: str | None = None
+) -> str:
+    """KR 장전 브리핑 (08:30) — 간밤 미국·공시·시그널·관심종목·포트폴리오."""
+    from datetime import datetime, timedelta  # noqa: PLC0415
+
+    from aim.portfolio.prices import kr_lookup_for, make_lookup, usdkrw as fetch_fx  # noqa: PLC0415
+    from aim.reports.open import build_kr_open_briefing  # noqa: PLC0415
+    from aim.reports.us import fetch_us_indices  # noqa: PLC0415
+    from aim.watch.dart import fetch_disclosures_for  # noqa: PLC0415
+
+    date = date or date_cls.today().isoformat()
+    logger.info("KR open briefing for %s", date)
+
+    us_indices = fetch_us_indices()
+    fx = fetch_fx()
+
+    conn = db.connect(settings.db_path)
+    try:
+        db.migrate(conn)
+        # 추적 대상 (관심 ∪ KR 보유)의 새 공시
+        symbols = {
+            r["symbol"] for r in conn.execute(
+                "SELECT symbol FROM watchlist WHERE active = 1 AND market = 'KR'"
+                " UNION SELECT symbol FROM portfolio_positions WHERE market = 'KR'"
+            )
+        }
+        disclosures = (
+            fetch_disclosures_for(settings.dart_api_key, symbols)
+            if settings.dart_api_key and symbols else []
+        )
+        since = (datetime.now() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+        recent_signals = [dict(r) for r in conn.execute(
+            "SELECT fired_at, symbol, kind, message FROM signals WHERE fired_at >= ?"
+            " ORDER BY fired_at DESC", (since,),
+        )]
+        watch_names = [
+            r["name"] or r["symbol"] for r in conn.execute(
+                "SELECT symbol, name FROM watchlist WHERE active = 1"
+            )
+        ]
+        personal_md = build_personal_section(conn, make_lookup(kr_lookup_for(settings, conn)), fx)
+
+        master_md = build_kr_open_briefing(
+            date, us_indices, fx, disclosures, recent_signals, watch_names, personal_md
+        )
+        report_id = ReportsRepository(conn).save(
+            kind="kr_open", market="KR", master_md=master_md, data={"us_indices": us_indices},
+        )
+    finally:
+        conn.close()
+
+    router.send("kr", f"🇰🇷 장전 브리핑 {date}", master_md)
+    return report_id
+
+
+def run_us_open_briefing(
+    settings: Settings, router: NotificationRouter, date: str | None = None
+) -> str:
+    """US 장전 브리핑 (22:30) — 지수 선물 + 오늘 KR 마감 요약."""
+    from aim.portfolio.prices import usdkrw as fetch_fx  # noqa: PLC0415
+    from aim.reports.open import build_us_open_briefing, fetch_us_futures  # noqa: PLC0415
+
+    date = date or date_cls.today().isoformat()
+    logger.info("US open briefing for %s", date)
+
+    futures = fetch_us_futures()
+    fx = fetch_fx()
+
+    # 오늘 KR 마감 요약 — KIS 지수 (키 없으면 생략)
+    kr_summary: list[tuple[str, float, float]] = []
+    conn = db.connect(settings.db_path)
+    try:
+        db.migrate(conn)
+        if settings.kis_app_key and settings.kis_app_secret:
+            try:
+                from aim.data.kis.auth import KISAuth  # noqa: PLC0415
+                from aim.data.kis.market import KISMarketProvider  # noqa: PLC0415
+
+                snap = KISMarketProvider(
+                    conn, KISAuth(settings.kis_app_key, settings.kis_app_secret, settings.kis_env)
+                ).close_snapshot(date)
+                kr_summary = [(i.name, i.close, i.change_pct) for i in snap.indices]
+            except Exception:  # noqa: BLE001
+                logger.exception("KR summary failed")
+
+        master_md = build_us_open_briefing(date, futures, kr_summary, fx)
+        report_id = ReportsRepository(conn).save(
+            kind="us_open", market="US", master_md=master_md, data={"futures": futures},
+        )
+    finally:
+        conn.close()
+
+    router.send("us", f"🇺🇸 장전 브리핑 {date}", master_md)
+    return report_id

@@ -56,7 +56,9 @@ def main() -> None:
     sub.add_parser("init-db", help="DB 생성/마이그레이션")
 
     p_brief = sub.add_parser("briefing", help="리포트 생성·발송")
-    p_brief.add_argument("kind", choices=["kr-close", "us-close"], help="리포트 종류")
+    p_brief.add_argument(
+        "kind", choices=["kr-open", "kr-close", "us-open", "us-close"], help="리포트 종류"
+    )
     p_brief.add_argument("--date", default=None, help="YYYY-MM-DD (기본: 오늘)")
     p_brief.add_argument("--mock", action="store_true", help="캔드 데이터 사용 (의존성/네트워크 불필요)")
     p_brief.add_argument("--channel", default="console", choices=["console", "telegram", "discord"])
@@ -176,9 +178,13 @@ def main() -> None:
 
         run_dashboard(settings, port=args.port)
 
-    elif args.command == "briefing" and args.kind == "us-close":
+    elif args.command == "briefing" and args.kind in ("kr-open", "us-open", "us-close"):
         from aim.delivery.router import NotificationRouter, build_router
-        from aim.pipelines import run_us_close_briefing
+        from aim.pipelines import (
+            run_kr_open_briefing,
+            run_us_close_briefing,
+            run_us_open_briefing,
+        )
 
         if args.channel == "discord":
             router = build_router(settings, respect_dry_run=False, include_console=False)
@@ -186,7 +192,12 @@ def main() -> None:
             from aim.delivery.console import ConsoleNotifier
 
             router = NotificationRouter({}, [ConsoleNotifier()])
-        report_id = run_us_close_briefing(settings, router, date=args.date)
+        runner = {
+            "kr-open": run_kr_open_briefing,
+            "us-open": run_us_open_briefing,
+            "us-close": run_us_close_briefing,
+        }[args.kind]
+        report_id = runner(settings, router, date=args.date)
         print(f"\nreport saved: {report_id}")
 
     elif args.command == "briefing":

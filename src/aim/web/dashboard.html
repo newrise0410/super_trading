@@ -208,7 +208,8 @@ j('/api/decisions').then(rows => {
   }).join('') || '<tr><td colspan="5" class="muted">판단 기록 없음</td></tr>';
 });
 
-const KIND = {kr_close:'🇰🇷 마감', us_close:'🇺🇸 마감', portfolio_diag:'🩺 진단', weekly:'📊 주간'};
+const KIND = {kr_open:'🇰🇷 장전', kr_close:'🇰🇷 마감', us_open:'🇺🇸 장전', us_close:'🇺🇸 마감',
+              portfolio_diag:'🩺 진단', weekly:'📊 주간'};
 j('/api/reports').then(rows => {
   document.getElementById('reports').innerHTML = rows.map(r =>
     `<div class="report-item" onclick="showReport('${r.report_id}')">
