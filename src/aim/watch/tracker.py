@@ -176,11 +176,13 @@ class WatchTracker:
     # ── 내부 ─────────────────────────────────────────────────────
 
     def _symbols(self) -> list[str]:
-        """추적 대상 = 관심종목 ∪ 내 포트폴리오 보유 종목 (보유자는 항상 추적)."""
-        wl = [row["symbol"] for row in self._watchlist.list_active()]
+        """추적 대상 = 관심종목 ∪ 내 포트폴리오 (KR만 — US 추적은 P4, KIS 국내 API 한정)."""
+        wl = [r["symbol"] for r in self._watchlist.list_active() if r["market"] == "KR"]
         pf = [
-            row["symbol"]
-            for row in self._watchlist.conn.execute("SELECT symbol FROM portfolio_positions")
+            r["symbol"]
+            for r in self._watchlist.conn.execute(
+                "SELECT symbol FROM portfolio_positions WHERE market = 'KR'"
+            )
         ]
         return list(dict.fromkeys(wl + pf))
 

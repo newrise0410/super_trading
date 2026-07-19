@@ -17,7 +17,10 @@ from aim.config import get_settings
 
 
 def _build_price_lookup(settings, conn):
-    """포트폴리오 평가용 시세 조회 — KIS(키 있으면) → pykrx 폴백."""
+    """포트폴리오 평가용 (symbol, market) 룩업 — KR: KIS→pykrx, US: yfinance."""
+    from aim.portfolio.prices import make_lookup
+
+    kr_lookup = None
     if settings.kis_app_key and settings.kis_app_secret:
         try:
             from aim.data.kis.auth import KISAuth
@@ -27,16 +30,16 @@ def _build_price_lookup(settings, conn):
                 conn, KISAuth(settings.kis_app_key, settings.kis_app_secret, settings.kis_env)
             )
 
-            def kis_lookup(symbol: str):
+            def kr_lookup(symbol: str):  # type: ignore[misc]
                 quotes = provider.snapshot([symbol])
                 return (quotes[0].price, quotes[0].change_pct) if quotes else None
-
-            return kis_lookup
         except Exception:  # noqa: BLE001
-            pass
-    from aim.data.krx import PykrxKRProvider
+            kr_lookup = None
+    if kr_lookup is None:
+        from aim.data.krx import PykrxKRProvider
 
-    return PykrxKRProvider().last_price
+        kr_lookup = PykrxKRProvider().last_price
+    return make_lookup(kr_lookup)
 
 
 def main() -> None:
@@ -75,8 +78,9 @@ def main() -> None:
     pf_add = pf_sub.add_parser("add", help="보유 종목 등록/수정")
     pf_add.add_argument("symbol")
     pf_add.add_argument("quantity", type=float)
-    pf_add.add_argument("avg_price", type=float)
+    pf_add.add_argument("avg_price", type=float, help="평단가 (미상이면 0)")
     pf_add.add_argument("--name", default="")
+    pf_add.add_argument("--market", default="KR", choices=["KR", "US"])
     pf_rm = pf_sub.add_parser("rm")
     pf_rm.add_argument("symbol")
     pf_sub.add_parser("list", help="보유 종목 평가 (KIS→pykrx 시세)")
@@ -282,8 +286,11 @@ def main() -> None:
             repo = PortfolioRepository(conn)
 
             if args.pf_command == "add":
-                repo.upsert(args.symbol, args.quantity, args.avg_price, name=args.name)
-                print(f"등록: {args.symbol} {args.quantity:,.0f}주 @ {args.avg_price:,.0f}")
+                repo.upsert(
+                    args.symbol, args.quantity, args.avg_price,
+                    name=args.name, market=args.market,
+                )
+                print(f"등록: [{args.market}] {args.symbol} {args.quantity:g}주 @ {args.avg_price:,.0f}")
 
             elif args.pf_command == "rm":
                 repo.remove(args.symbol)
@@ -308,9 +315,10 @@ def main() -> None:
                 if not rows:
                     print("(보유 종목 없음 — aim portfolio add <코드> <수량> <평단가>)")
                     return
-                # 시세: KIS 우선, 실패 시 pykrx 폴백
+                from aim.portfolio.prices import usdkrw
+
                 lookup = _build_price_lookup(settings, conn)
-                views, totals = value_portfolio(rows, lookup)
+                views, totals = value_portfolio(rows, lookup, usdkrw())
                 print(render_portfolio_md(views, totals))
         finally:
             conn.close()

@@ -39,7 +39,9 @@ def run_kr_close_briefing(
             kind="kr_close", market="KR", master_md=master_md, data=snap.to_dict()
         )
         # 개인화 레이어 (§10.6-2) — 내 포트폴리오 평가. 실패해도 마스터는 발송
-        personal_md = build_personal_section(conn, provider.last_price)
+        from aim.portfolio.prices import make_lookup, usdkrw  # noqa: PLC0415
+
+        personal_md = build_personal_section(conn, make_lookup(provider.last_price), usdkrw())
     finally:
         conn.close()
 

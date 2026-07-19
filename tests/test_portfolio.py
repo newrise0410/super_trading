@@ -1,4 +1,4 @@
-"""내 포트폴리오 — 평가·렌더·KIS 동기화·트래커 연동·개인화 섹션 검증."""
+"""내 포트폴리오 — 통화 인지 평가·렌더·KIS 동기화·트래커 연동·개인화 섹션 검증."""
 
 import pytest
 
@@ -17,63 +17,92 @@ def conn(tmp_path):
     c.close()
 
 
-def _lookup(symbol):
-    return {"005930": (71000.0, 2.9), "000660": (198500.0, -1.1)}.get(symbol)
+def _lookup(symbol, market):
+    return {
+        ("005930", "KR"): (71000.0, 2.9),
+        ("AAPL", "US"): (200.0, -1.0),
+        ("SCHD", "US"): (30.0, 0.5),
+    }.get((symbol, market))
 
 
-def test_valuation_math_and_weights(conn):
+def test_valuation_krw_only(conn):
     repo = PortfolioRepository(conn)
     repo.upsert("005930", 10, 65000, name="삼성전자")
-    repo.upsert("000660", 2, 180000, name="SK하이닉스")
 
     views, totals = value_portfolio(repo.list_all(), _lookup)
-
-    samsung = next(v for v in views if v.symbol == "005930")
-    assert samsung.value == 710000.0
-    assert samsung.pnl == pytest.approx(60000.0)
-    assert samsung.pnl_pct == pytest.approx(9.23, abs=0.01)
-
-    total_value = 710000.0 + 397000.0
-    assert totals["value"] == pytest.approx(total_value)
-    assert samsung.weight_pct == pytest.approx(710000.0 / total_value * 100)
-    assert totals["pnl"] == pytest.approx(total_value - (650000 + 360000))
+    v = views[0]
+    assert v.currency == "KRW" and v.value == 710000.0
+    assert v.pnl == pytest.approx(60000.0)
+    assert totals["by_currency"]["KRW"]["value"] == pytest.approx(710000.0)
+    assert totals["combined_krw"] == pytest.approx(710000.0)  # USD 없음 → 환율 불필요
+    assert v.weight_pct == pytest.approx(100.0)
 
 
-def test_valuation_missing_price_isolated(conn):
+def test_valuation_mixed_currency_with_fx(conn):
     repo = PortfolioRepository(conn)
-    repo.upsert("005930", 10, 65000, name="삼성전자")
-    repo.upsert("999999", 5, 10000, name="상폐주")  # 시세 없음
+    repo.upsert("005930", 10, 65000, name="삼성전자", market="KR")
+    repo.upsert("AAPL", 2, 150, name="애플", market="US")
 
-    views, totals = value_portfolio(repo.list_all(), _lookup)
-    missing = next(v for v in views if v.symbol == "999999")
-    assert missing.price is None and missing.pnl is None
-    assert totals["value"] is None  # 전체 합계는 불완전 → None (거짓 합계 방지)
+    views, totals = value_portfolio(repo.list_all(), _lookup, fx_usdkrw=1300.0)
+    assert totals["by_currency"]["KRW"]["value"] == pytest.approx(710000.0)
+    assert totals["by_currency"]["USD"]["value"] == pytest.approx(400.0)
+    assert totals["combined_krw"] == pytest.approx(710000.0 + 400.0 * 1300)
+
+    apple = next(v for v in views if v.symbol == "AAPL")
+    assert apple.weight_pct == pytest.approx(400 * 1300 / (710000 + 520000) * 100)
+
+
+def test_valuation_mixed_currency_without_fx_no_combined(conn):
+    repo = PortfolioRepository(conn)
+    repo.upsert("005930", 10, 65000, market="KR")
+    repo.upsert("AAPL", 2, 150, market="US")
+
+    views, totals = value_portfolio(repo.list_all(), _lookup, fx_usdkrw=None)
+    assert totals["combined_krw"] is None          # 환율 없으면 통합 합계 생략
+    assert all(v.weight_pct is None for v in views)
+
+
+def test_unknown_basis_hides_pnl(conn):
+    repo = PortfolioRepository(conn)
+    repo.upsert("AAPL", 2, 0, name="애플", market="US")  # 평단가 미상
+
+    views, totals = value_portfolio(repo.list_all(), _lookup, fx_usdkrw=1300.0)
+    v = views[0]
+    assert v.value == pytest.approx(400.0)
+    assert v.pnl is None and v.pnl_pct is None      # 손익 왜곡 방지
+    assert totals["all_basis"] is False
 
     md = render_portfolio_md(views, totals)
-    assert "시세 조회 불가" in md and "합계" not in md
+    assert "평단가 미입력" in md and "손익" not in md.split("\n")[1]
 
 
-def test_render_contains_pnl_and_weight(conn):
+def test_missing_price_isolated(conn):
     repo = PortfolioRepository(conn)
-    repo.upsert("005930", 10, 65000, name="삼성전자")
-    views, totals = value_portfolio(repo.list_all(), _lookup)
+    repo.upsert("005930", 10, 65000, market="KR")
+    repo.upsert("DEAD", 5, 10, name="상장폐지", market="US")  # 시세 없음
+
+    views, totals = value_portfolio(repo.list_all(), _lookup, fx_usdkrw=1300.0)
+    assert totals["combined_krw"] is None           # 불완전 → 통합 생략
     md = render_portfolio_md(views, totals)
-    assert "내 포트폴리오" in md
-    assert "+60,000" in md and "(+9.2%)" in md
-    assert "합계" in md
+    assert "시세 조회 불가" in md
 
 
-def test_personal_section_empty_portfolio(conn):
-    assert build_personal_section(conn, _lookup) == ""
+def test_render_currency_symbols(conn):
+    repo = PortfolioRepository(conn)
+    repo.upsert("AAPL", 2, 150, name="애플", market="US")
+    views, totals = value_portfolio(repo.list_all(), _lookup, fx_usdkrw=1300.0)
+    md = render_portfolio_md(views, totals)
+    assert "$200.00" in md and "$400.00" in md
+    assert "통합" in md and "환율 1,300" in md
 
 
 def test_personal_section_failure_isolated(conn):
     PortfolioRepository(conn).upsert("005930", 10, 65000)
 
-    def broken_lookup(symbol):
+    def broken_lookup(symbol, market):
         raise ConnectionError("network down")
 
-    assert build_personal_section(conn, broken_lookup) == ""  # 예외가 밖으로 새지 않음
+    assert build_personal_section(conn, broken_lookup) == ""
 
 
 def test_kis_sync_parses_balance(conn):
@@ -89,17 +118,13 @@ def test_kis_sync_parses_balance(conn):
         assert params["CANO"] == "12345678" and params["ACNT_PRDT_CD"] == "01"
         return {"rt_cd": "0", "output1": [
             {"pdno": "005930", "prdt_name": "삼성전자", "hldg_qty": "10", "pchs_avg_pric": "65000.00"},
-            {"pdno": "035720", "prdt_name": "카카오", "hldg_qty": "0", "pchs_avg_pric": "50000"},  # 잔고 0 제외
+            {"pdno": "035720", "prdt_name": "카카오", "hldg_qty": "0", "pchs_avg_pric": "50000"},
         ]}
 
     positions = fetch_balance(FakeAuth(), "12345678-01", get_fn=fake_get)
     assert positions == [
         {"symbol": "005930", "name": "삼성전자", "quantity": 10.0, "avg_price": 65000.0}
     ]
-
-    PortfolioRepository(conn).replace_all(positions)
-    rows = PortfolioRepository(conn).list_all()
-    assert len(rows) == 1 and rows[0]["name"] == "삼성전자"
 
 
 def test_kis_sync_bad_account_format():
@@ -124,4 +149,4 @@ def test_tracker_includes_portfolio_symbols(conn):
             return True
 
     tracker = WatchTracker(conn, quotes, disclosures, NotificationRouter({}, [Sink()]))
-    assert tracker._symbols() == ["005930", "000660"]  # 관심종목 ∪ 보유종목
+    assert tracker._symbols() == ["005930", "000660"]

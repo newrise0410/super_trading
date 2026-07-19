@@ -15,12 +15,14 @@ from aim.storage.repositories.portfolio import PortfolioRepository
 logger = logging.getLogger(__name__)
 
 
-def build_personal_section(conn: sqlite3.Connection, price_lookup: PriceLookup) -> str:
+def build_personal_section(
+    conn: sqlite3.Connection, price_lookup: PriceLookup, fx_usdkrw: float | None = None
+) -> str:
     try:
         rows = PortfolioRepository(conn).list_all()
         if not rows:
             return ""
-        views, totals = value_portfolio(rows, price_lookup)
+        views, totals = value_portfolio(rows, price_lookup, fx_usdkrw)
         return render_portfolio_md(views, totals)
     except Exception:  # noqa: BLE001 — 개인 섹션 실패가 마스터 발송을 막지 않는다
         logger.exception("personal section failed")
