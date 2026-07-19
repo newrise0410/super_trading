@@ -225,6 +225,19 @@ def create_app(settings: Settings):
         finally:
             conn.close()
 
+    @app.post("/api/panel")
+    def panel_run(payload: dict = Body(...)):
+        """대가 패널 — 카드 확정 후 참고 관점 (일별 캐시)."""
+        if quick_llm is None:
+            return JSONResponse({"error": "LLM 미설정"}, status_code=503)
+        from aim.panel import run_panel  # noqa: PLC0415
+
+        conn = _conn()
+        try:
+            return run_panel(conn, settings, str(payload.get("symbol", "")), quick_llm)
+        finally:
+            conn.close()
+
     @app.post("/api/socra/requestion")
     def requestion_create(payload: dict = Body(...)):
         """근거 변화 알림 → 재질문 세션 (§4.5)."""

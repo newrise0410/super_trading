@@ -65,6 +65,18 @@ def build_bus(settings: Settings) -> EventBus:
                 quick = build_llm(settings, "quick")
             except RuntimeError:
                 quick = None
+            # 카드 보유 종목의 패널 일별 갱신 (다음 사이클의 페르소나 시뮬 입력)
+            if quick is not None:
+                from aim.panel import run_panel  # noqa: PLC0415
+
+                symbols = [r["symbol"] for r in card_conn.execute(
+                    "SELECT DISTINCT symbol FROM decision_cards WHERE status='active'"
+                )]
+                for symbol in symbols:
+                    try:
+                        run_panel(card_conn, settings, symbol, quick)
+                    except Exception:  # noqa: BLE001
+                        logger.exception("panel refresh failed: %s", symbol)
             review_cards(card_conn, settings, quick, router)
         finally:
             card_conn.close()

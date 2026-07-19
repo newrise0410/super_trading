@@ -28,7 +28,9 @@ BENCHMARK_SYMBOL = "069500"    # KODEX 200
 MOMENTUM_MIN_CHANGE = 3.0      # 진입 최소 등락률
 MOMENTUM_MIN_VALUE = 500.0     # 진입 최소 거래대금 (억)
 
-STRATEGIES = ("benchmark", "momentum", "ai_debate")
+PERSONA_STRATEGIES = ("p_buffett", "p_graham", "p_lynch", "p_wood", "p_burry", "p_dalio")
+STRATEGIES = ("benchmark", "momentum", "ai_debate", *PERSONA_STRATEGIES)
+PERSONA_MIN_CONF = 60  # 페르소나 BUY 진입 최소 확신도
 
 PriceFn = Callable[[str], tuple[float, float] | None]  # (symbol) -> (price, change%)
 
@@ -71,6 +73,8 @@ def _run_strategy(repo, pf, strategy, conn, snapshot, last_price, date) -> None:
     elif strategy == "ai_debate":
         _ai_exits(repo, pf, conn, last_price, date)
         _ai_entries(repo, pf, conn, last_price, date)
+    elif strategy in PERSONA_STRATEGIES:
+        _persona_cycle(repo, pf, strategy.removeprefix("p_"), conn, last_price, date)
 
 
 def _benchmark(repo, pf, last_price) -> None:
@@ -150,6 +154,38 @@ def _ai_entries(repo, pf, conn, last_price, date) -> None:
         held.add(d["symbol"])
 
 
+def _persona_cycle(repo, pf, persona: str, conn, last_price, date: str) -> None:
+    """페르소나 전략 — 당일 패널 판정 추종 (유니버스 = 사용자가 질문한 종목들).
+
+    BUY(확신도≥60) → 슬롯 매수 / AVOID → 보유 청산. 공통 손절/익절 병행.
+    """
+    from aim.panel.engine import todays_verdicts  # noqa: PLC0415
+
+    _exits(repo, pf, last_price)  # 공통 손절 -7% / 익절 +15%
+
+    verdicts_by_symbol = todays_verdicts(conn, date)
+    held = {p["symbol"]: p for p in repo.positions(pf["id"])}
+
+    for symbol, by_persona in verdicts_by_symbol.items():
+        verdict = by_persona.get(persona)
+        if not verdict:
+            continue
+        if verdict["stance"] == "AVOID" and symbol in held:
+            quote = last_price(symbol)
+            if quote:
+                repo.execute_trade(pf["id"], symbol, "SELL", held[symbol]["quantity"], quote[0])
+                del held[symbol]
+        elif (
+            verdict["stance"] == "BUY" and verdict.get("confidence", 0) >= PERSONA_MIN_CONF
+            and symbol not in held and len(held) < MAX_SLOTS
+        ):
+            budget = INITIAL_CASH * SLOT_FRACTION
+            quote = last_price(symbol)
+            if quote and repo.cash(pf["id"]) >= budget:
+                repo.execute_trade(pf["id"], symbol, "BUY", budget / quote[0], quote[0])
+                held[symbol] = {"quantity": budget / quote[0]}
+
+
 def _mark_equity(repo, portfolio_id: int, last_price, date: str) -> float:
     value = repo.cash(portfolio_id)
     for pos in repo.positions(portfolio_id):
@@ -185,7 +221,11 @@ def render_leaderboard(conn: sqlite3.Connection) -> str:
     if not rows:
         return ""
     rows.sort(key=lambda r: r[1], reverse=True)
-    label = {"ai_debate": "AI 토론", "momentum": "모멘텀", "benchmark": "벤치마크(K200)"}
+    label = {
+        "ai_debate": "AI 토론", "momentum": "모멘텀", "benchmark": "벤치마크(K200)",
+        "p_buffett": "🏛️ 버핏", "p_graham": "🏛️ 그레이엄", "p_lynch": "🏛️ 린치",
+        "p_wood": "🏛️ 우드", "p_burry": "🏛️ 버리", "p_dalio": "🏛️ 달리오",
+    }
     lines = ["## 🏁 전략 시뮬레이션 리더보드 (가상 1억)"]
     for i, (strategy, ret, mdd, trades, value) in enumerate(rows, 1):
         medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{i}.")

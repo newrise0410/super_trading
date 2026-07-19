@@ -148,6 +148,17 @@
   #confirm { width: 100%; margin-top: 12px; background: var(--good); color: #fff; border: 0;
              border-radius: 10px; padding: 11px; font-weight: 700; font-size: 14px; cursor: pointer; }
   .saved { text-align: center; color: var(--good); font-weight: 700; margin-top: 12px; }
+  #panel-btn { width: 100%; margin-top: 10px; background: var(--accent2); color: #fff; border: 0;
+               border-radius: 10px; padding: 10px; font-weight: 700; font-size: 13.5px; cursor: pointer; }
+  .pv { margin-top: 12px; }
+  .pv .cons { font-size: 13px; font-weight: 700; margin-bottom: 8px; padding: 8px 10px;
+              background: var(--accent2-soft); border-radius: 8px; color: var(--accent2); }
+  .pv .p { border-top: 1px solid var(--border); padding: 8px 2px; font-size: 12.5px; }
+  .pv .p .h { display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; }
+  .pv .p .th { color: var(--ink2); margin-top: 2px; }
+  .pv .p .km { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .st-BUY { color: var(--good); } .st-AVOID { color: #E5484D; } .st-HOLD { color: var(--muted); }
+  .pv .disc { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
   .empty-card { color: var(--muted); font-size: 13px; line-height: 1.7; padding: 8px 2px; }
 
   @media (max-width: 1080px) { #app { grid-template-columns: 220px 1fr; } #cardpane { display: none; } }
@@ -295,7 +306,7 @@ async function createFromEmpty() {
   const d = await api('/api/socra/sessions', {query: q});
   BUSY = false; $('send0').disabled = false; $('input0').value='';
   if (d.error) { addBot(d.error, [], true); return; }
-  SID = d.session_id; renderStagebar(d.stage); addBot(d.reply, d.legend);
+  SID = d.session_id; SESS_SYMBOL = d.symbol; renderStagebar(d.stage); addBot(d.reply, d.legend);
   loadSessions(); $('input').focus();
 }
 
@@ -307,13 +318,14 @@ async function startRequestion(cardId) {
   const d = await api('/api/socra/requestion', {card_id: cardId});
   BUSY = false;
   if (d.error) { addBot(d.error, [], true); return; }
-  SID = d.session_id; renderStagebar(d.stage); addBot(d.reply, d.legend);
+  SID = d.session_id; SESS_SYMBOL = d.symbol; renderStagebar(d.stage); addBot(d.reply, d.legend);
   loadSessions(); $('input').focus();
 }
 async function openSession(id) {
   SID = id; showChat(); resetCard();
   const d = await api('/api/socra/sessions/'+id);
   SESS_KIND = d.session.kind || 'journey';
+  SESS_SYMBOL = d.session.symbol;
   renderStagebar(d.session.stage);
   $('msgs').innerHTML = '';
   for (const t of d.turns) {
@@ -358,9 +370,31 @@ function renderCard(c, saved, sess) {
     ${field('재검토 조건', recheck.length ? recheck.map(r=>'· '+r).join('\n') : null)}
     ${field('나의 확신도', c.confidence_self!=null ? c.confidence_self+'%' : null)}
     ${(c.gaps&&c.gaps.length)?`<div class="gaps">✍️ 미완성: ${c.gaps.join(' / ')}</div>`:''}
-    ${saved?`<div class="saved">✓ 감시 시작 — 근거가 변하면 알려드려요</div>`
+    ${saved?`<div class="saved">✓ 감시 시작 — 근거가 변하면 알려드려요</div>
+             <button id="panel-btn" onclick="loadPanel()">🏛️ 대가들은 어떻게 볼까?</button>
+             <div id="panel-view" class="pv"></div>`
            :`<button id="confirm" onclick="confirmCard()">이대로 확정하기</button>`}
   </div>`;
+}
+
+/* ── 대가 패널 (카드 확정 후 참고 관점) ── */
+let SESS_SYMBOL = null;
+async function loadPanel() {
+  if (!SESS_SYMBOL) return;
+  const btn = $('panel-btn'); btn.disabled = true; btn.textContent = '6인의 관점을 모으는 중… (수십 초)';
+  const d = await api('/api/panel', {symbol: SESS_SYMBOL});
+  if (d.error) { btn.textContent = d.error; return; }
+  btn.style.display = 'none';
+  const c = d.consensus;
+  $('panel-view').innerHTML =
+    `<div class="cons">합의: ${c.majority} ${c.agreement_pct}%
+       <span style="font-weight:500">(매수 ${c.counts.BUY} · 중립 ${c.counts.HOLD} · 회피 ${c.counts.AVOID})</span></div>`
+    + d.verdicts.map(v => `<div class="p">
+        <div class="h"><span>${esc(v.display)}</span>
+          <span class="st-${v.stance}">${v.stance} ${v.confidence}%</span></div>
+        <div class="th">${esc(v.thesis)}</div>
+        <div class="km">주목: ${esc(v.key_metric)}</div></div>`).join('')
+    + `<div class="disc">${esc(d.disclaimer)}</div>`;
 }
 function confirmCard() { $('input').value = '확정'; send(); }
 function markSaved() { const b = $('confirm'); if (b) b.outerHTML = `<div class="saved">✓ 감시 시작 — 근거가 변하면 알려드려요</div>`; }

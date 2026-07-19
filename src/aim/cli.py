@@ -124,6 +124,10 @@ def main() -> None:
 
     sub.add_parser("symbols-sync", help="상장 종목 마스터 동기화 (소크라 종목 검색용)")
 
+    p_panel = sub.add_parser("panel", help="대가 패널 — 6인 관점 + 합의 지표")
+    p_panel.add_argument("symbol")
+    p_panel.add_argument("--force", action="store_true", help="일별 캐시 무시 재실행")
+
     p_cards = sub.add_parser("cards", help="결정 카드 (소크라)")
     cards_sub = p_cards.add_subparsers(dest="cards_command", required=True)
     cards_sub.add_parser("list", help="활성 카드 목록")
@@ -187,6 +191,33 @@ def main() -> None:
         from aim.web.app import run_dashboard
 
         run_dashboard(settings, port=args.port)
+
+    elif args.command == "panel":
+        from aim.llm import build_llm
+        from aim.panel import run_panel
+        from aim.storage import db
+
+        conn = db.connect(settings.db_path)
+        try:
+            db.migrate(conn)
+            result = run_panel(
+                conn, settings, args.symbol.upper(), build_llm(settings, "quick"),
+                force=args.force,
+            )
+        finally:
+            conn.close()
+
+        c = result["consensus"]
+        cache_note = " (오늘 캐시)" if result.get("cached") else ""
+        print(f"\n🏛️ 대가 패널 — {result['name']}({result['symbol']}) · {result['date']}{cache_note}")
+        print(f"합의: {c['majority']} {c['agreement_pct']}% "
+              f"(BUY {c['counts']['BUY']} · HOLD {c['counts']['HOLD']} · AVOID {c['counts']['AVOID']})\n")
+        icon = {"BUY": "🟢", "HOLD": "🟡", "AVOID": "🔴"}
+        for v in result["verdicts"]:
+            print(f"{icon.get(v['stance'], '')} {v['display']} — {v['stance']} [{v['confidence']}%]"
+                  f" · 주목: {v['key_metric']}")
+            print(f"   {v['thesis']}")
+        print(f"\n_{result['disclaimer']}_")
 
     elif args.command == "cards":
         from aim.storage import db
