@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>소크라 시스템 구조</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif+KR:wght@400;600&family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #FAF9F5; --ink: #17150F; --muted: #57534A; --soft: #8F8B80;
+    --rule: rgba(23,21,15,0.09); --accent: #FF4D26; --accent-tint: #FFE9E2;
+    --link: #7B5CFF;
+  }
+  * { margin: 0; box-sizing: border-box; }
+  body { background: var(--paper); color: var(--ink); padding: 48px 32px;
+         font-family: 'Geist', 'Noto Sans KR', sans-serif; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  .eyebrow { font-family: 'Geist Mono', monospace; font-size: 11px; letter-spacing: 0.18em;
+             color: var(--soft); text-transform: uppercase; margin-bottom: 8px; }
+  h1 { font-family: 'Instrument Serif', 'Noto Serif KR', serif; font-weight: 400;
+       font-size: 1.75rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+  svg { width: 100%; height: auto; display: block; }
+  .colophon { font-family: 'Geist Mono', monospace; font-size: 10px; color: var(--soft);
+              border-top: 1px solid var(--rule); margin-top: 32px; padding-top: 12px;
+              letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">SUPER TRADING · SOCRA v2</p>
+  <h1>소크라 시스템 구조</h1>
+  <p class="subtitle">질문으로 배우는 투자 — 소크라테스 대화 엔진과 살아있는 결정 카드 루프</p>
+
+  <svg viewBox="0 0 920 520" xmlns="http://www.w3.org/2000/svg" font-family="'Geist','Noto Sans KR',sans-serif">
+    <defs>
+      <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#57534A"/>
+      </marker>
+      <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#7B5CFF"/>
+      </marker>
+    </defs>
+
+    <rect width="100%" height="100%" fill="#FAF9F5"/>
+
+    <!-- ══ 연결선 (박스보다 먼저 — z-order) ══ -->
+    <!-- 1. 웹 → 엔진 -->
+    <line x1="240" y1="80" x2="340" y2="80" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- 2. 웹 → 패널 (x=292에서 엔진→저장 세로선을 브리지로 넘음) -->
+    <path d="M 180,136 V 160 Q 180,168 188,168 H 284 a 8,8 0 0,1 16,0 H 364 Q 372,168 372,176 V 200"
+          fill="none" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- 3. 엔진 → 증거 -->
+    <line x1="540" y1="80" x2="640" y2="80" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- 4. 엔진 → LLM -->
+    <path d="M 540,112 H 572 Q 580,112 580,120 V 216 Q 580,224 588,224 H 640"
+          fill="none" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- 5. 패널 → LLM -->
+    <line x1="540" y1="240" x2="640" y2="240" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- 6. 증거 → 데이터 소스 (우측 여백 코리도) -->
+    <path d="M 840,80 H 864 Q 872,80 872,88 V 380 Q 872,388 864,388 H 840"
+          fill="none" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- 7. 엔진 → 스토리지 (좌측 코리도 x=292) -->
+    <path d="M 340,112 H 300 Q 292,112 292,120 V 380 Q 292,388 300,388 H 340"
+          fill="none" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- 8. 패널 → 스토리지 -->
+    <line x1="440" y1="280" x2="440" y2="344" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- 9. 감시 → 스토리지 (동결 스냅샷 diff) -->
+    <line x1="240" y1="416" x2="340" y2="416" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- 10. 감시 → 디스코드 (알림 경로 — 보라) -->
+    <line x1="140" y1="344" x2="140" y2="280" stroke="#7B5CFF" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+    <!-- 11. 디스코드 → 웹 (재질문 링크 — 루프 폐합, 점선) -->
+    <line x1="140" y1="200" x2="140" y2="136" stroke="#7B5CFF" stroke-width="1"
+          stroke-dasharray="4,3" marker-end="url(#arrow-link)"/>
+
+    <!-- ══ 노드 ══ -->
+    <!-- A1 웹 앱 -->
+    <rect x="40" y="48" width="200" height="88" rx="6" fill="#FAF9F5"/>
+    <rect x="40" y="48" width="200" height="88" rx="6" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+    <rect x="48" y="54" width="28" height="12" rx="2" fill="transparent" stroke="rgba(23,21,15,0.4)" stroke-width="0.8"/>
+    <text x="62" y="63" fill="rgba(23,21,15,0.8)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">WEB</text>
+    <text x="140" y="92" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">웹 앱</text>
+    <text x="140" y="112" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">FastAPI · socra.html</text>
+
+    <!-- B1 소크라 대화 엔진 [FOCAL] -->
+    <rect x="340" y="48" width="200" height="88" rx="6" fill="#FAF9F5"/>
+    <rect x="340" y="48" width="200" height="88" rx="6" fill="#FFE9E2" stroke="#FF4D26" stroke-width="1"/>
+    <rect x="348" y="54" width="32" height="12" rx="2" fill="transparent" stroke="rgba(255,77,38,0.5)" stroke-width="0.8"/>
+    <text x="364" y="63" fill="#FF4D26" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">CORE</text>
+    <text x="440" y="92" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">소크라 대화 엔진</text>
+    <text x="440" y="112" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">4단계 여정 → 결정 카드</text>
+
+    <!-- C1 증거 레이어 -->
+    <rect x="640" y="48" width="200" height="88" rx="6" fill="#FAF9F5"/>
+    <rect x="640" y="48" width="200" height="88" rx="6" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+    <rect x="648" y="54" width="28" height="12" rx="2" fill="transparent" stroke="rgba(23,21,15,0.4)" stroke-width="0.8"/>
+    <text x="662" y="63" fill="rgba(23,21,15,0.8)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">EVID</text>
+    <text x="740" y="92" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">증거 레이어</text>
+    <text x="740" y="112" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">기술 · 수급 · 밸류에이션</text>
+
+    <!-- A2 디스코드 알림 [external] -->
+    <rect x="40" y="200" width="200" height="80" rx="6" fill="#FAF9F5"/>
+    <rect x="40" y="200" width="200" height="80" rx="6" fill="rgba(23,21,15,0.03)" stroke="rgba(23,21,15,0.3)" stroke-width="1"/>
+    <rect x="48" y="206" width="28" height="12" rx="2" fill="transparent" stroke="rgba(23,21,15,0.3)" stroke-width="0.8"/>
+    <text x="62" y="215" fill="rgba(23,21,15,0.6)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+    <text x="140" y="240" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">디스코드 알림</text>
+    <text x="140" y="260" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">router · webhooks</text>
+
+    <!-- B2 대가 패널 -->
+    <rect x="340" y="200" width="200" height="80" rx="6" fill="#FAF9F5"/>
+    <rect x="340" y="200" width="200" height="80" rx="6" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+    <rect x="348" y="206" width="36" height="12" rx="2" fill="transparent" stroke="rgba(23,21,15,0.4)" stroke-width="0.8"/>
+    <text x="366" y="215" fill="rgba(23,21,15,0.8)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">PANEL</text>
+    <text x="440" y="240" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">대가 패널</text>
+    <text x="440" y="260" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">6 personas · 시뮬레이션</text>
+
+    <!-- C2 LLM 2-티어 [external] -->
+    <rect x="640" y="200" width="200" height="80" rx="6" fill="#FAF9F5"/>
+    <rect x="640" y="200" width="200" height="80" rx="6" fill="rgba(23,21,15,0.03)" stroke="rgba(23,21,15,0.3)" stroke-width="1"/>
+    <rect x="648" y="206" width="28" height="12" rx="2" fill="transparent" stroke="rgba(23,21,15,0.3)" stroke-width="0.8"/>
+    <text x="662" y="215" fill="rgba(23,21,15,0.6)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">LLM</text>
+    <text x="740" y="240" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">LLM 2-티어</text>
+    <text x="740" y="260" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">Codex deep · MiniMax quick</text>
+
+    <!-- A3 카드 감시·재질문 [FOCAL] -->
+    <rect x="40" y="344" width="200" height="88" rx="6" fill="#FAF9F5"/>
+    <rect x="40" y="344" width="200" height="88" rx="6" fill="#FFE9E2" stroke="#FF4D26" stroke-width="1"/>
+    <rect x="48" y="350" width="32" height="12" rx="2" fill="transparent" stroke="rgba(255,77,38,0.5)" stroke-width="0.8"/>
+    <text x="64" y="359" fill="#FF4D26" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">LOOP</text>
+    <text x="140" y="388" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">카드 감시 · 재질문</text>
+    <text x="140" y="408" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">근거 diff · 기준선 · 재검토</text>
+
+    <!-- B3 SQLite 스토리지 [store] -->
+    <rect x="340" y="344" width="200" height="88" rx="6" fill="#FAF9F5"/>
+    <rect x="340" y="344" width="200" height="88" rx="6" fill="rgba(23,21,15,0.05)" stroke="#57534A" stroke-width="1"/>
+    <rect x="348" y="350" width="28" height="12" rx="2" fill="transparent" stroke="rgba(87,83,74,0.5)" stroke-width="0.8"/>
+    <text x="362" y="359" fill="#57534A" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">DB</text>
+    <text x="440" y="388" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">SQLite 스토리지</text>
+    <text x="440" y="408" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">sessions · cards · mastery</text>
+
+    <!-- C3 데이터 소스 [external] -->
+    <rect x="640" y="344" width="200" height="88" rx="6" fill="#FAF9F5"/>
+    <rect x="640" y="344" width="200" height="88" rx="6" fill="rgba(23,21,15,0.03)" stroke="rgba(23,21,15,0.3)" stroke-width="1"/>
+    <rect x="648" y="350" width="28" height="12" rx="2" fill="transparent" stroke="rgba(23,21,15,0.3)" stroke-width="0.8"/>
+    <text x="662" y="359" fill="rgba(23,21,15,0.6)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+    <text x="740" y="388" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">데이터 소스</text>
+    <text x="740" y="408" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">KIS · DART · yfinance</text>
+
+    <!-- ══ 연결선 라벨 (마스크 + 6~10px 간격) ══ -->
+    <rect x="256" y="60" width="72" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="292" y="69" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">대화 · 카드</text>
+
+    <rect x="308" y="148" width="56" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="336" y="157" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">관점 요청</text>
+
+    <rect x="556" y="60" width="72" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="592" y="69" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">증거 수집</text>
+
+    <rect x="492" y="164" width="76" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="530" y="173" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">QUICK·DEEP</text>
+
+    <rect x="564" y="248" width="52" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="590" y="257" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">6 렌즈</text>
+
+    <rect x="788" y="308" width="72" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="824" y="317" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">시세·공시·재무</text>
+
+    <rect x="304" y="308" width="56" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="332" y="317" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">세션·카드</text>
+
+    <rect x="452" y="304" width="64" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="484" y="313" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">판정→시뮬</text>
+
+    <rect x="252" y="396" width="76" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="290" y="405" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">스냅샷 diff</text>
+
+    <rect x="152" y="304" width="40" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="172" y="313" fill="#7B5CFF" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">알림</text>
+
+    <rect x="44" y="156" width="76" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="82" y="165" fill="#7B5CFF" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">재질문 링크</text>
+
+    <!-- ══ 범례 ══ -->
+    <line x1="40" y1="464" x2="880" y2="464" stroke="rgba(23,21,15,0.1)" stroke-width="0.8"/>
+    <text x="40" y="484" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace" letter-spacing="0.14em">LEGEND</text>
+
+    <rect x="120" y="476" width="12" height="12" rx="2" fill="#FFE9E2" stroke="#FF4D26" stroke-width="1"/>
+    <text x="140" y="485" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">핵심 루프</text>
+
+    <rect x="240" y="476" width="12" height="12" rx="2" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+    <text x="260" y="485" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">모듈</text>
+
+    <rect x="340" y="476" width="12" height="12" rx="2" fill="rgba(23,21,15,0.05)" stroke="#57534A" stroke-width="1"/>
+    <text x="360" y="485" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">저장소</text>
+
+    <rect x="440" y="476" width="12" height="12" rx="2" fill="rgba(23,21,15,0.03)" stroke="rgba(23,21,15,0.3)" stroke-width="1"/>
+    <text x="460" y="485" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">외부 서비스</text>
+
+    <line x1="560" y1="482" x2="592" y2="482" stroke="#7B5CFF" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-link)"/>
+    <text x="600" y="485" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">알림 → 사용자 복귀 (§4.5 루프)</text>
+  </svg>
+
+  <p class="colophon">SOCRA v2 · 137 TESTS · S1–S3 SHIPPED · docs/architecture.html</p>
+</div>
+</body>
+</html>

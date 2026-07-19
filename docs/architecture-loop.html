@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>살아있는 결정 카드 — §4.5 루프 시퀀스</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif+KR:wght@400;600&family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --paper:#FAF9F5; --ink:#17150F; --muted:#57534A; --soft:#8F8B80;
+          --rule:rgba(23,21,15,0.09); --accent:#FF4D26; --accent-tint:#FFE9E2; --link:#7B5CFF; }
+  * { margin:0; box-sizing:border-box; }
+  body { background:var(--paper); color:var(--ink); padding:48px 32px;
+         font-family:'Geist','Noto Sans KR',sans-serif; }
+  .wrap { max-width:960px; margin:0 auto; }
+  .eyebrow { font-family:'Geist Mono',monospace; font-size:11px; letter-spacing:0.18em;
+             color:var(--soft); text-transform:uppercase; margin-bottom:8px; }
+  h1 { font-family:'Instrument Serif','Noto Serif KR',serif; font-weight:400;
+       font-size:1.75rem; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:14px; margin-bottom:32px; }
+  svg { width:100%; height:auto; display:block; }
+  .colophon { font-family:'Geist Mono',monospace; font-size:10px; color:var(--soft);
+              border-top:1px solid var(--rule); margin-top:32px; padding-top:12px; letter-spacing:0.08em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">SOCRA v2 · DETAIL 1/2 · SEQUENCE</p>
+  <h1>살아있는 결정 카드 — §4.5 루프</h1>
+  <p class="subtitle">확정된 카드의 근거가 변하면, 카드가 사용자를 다시 부른다</p>
+
+  <svg viewBox="0 0 920 608" xmlns="http://www.w3.org/2000/svg" font-family="'Geist','Noto Sans KR',sans-serif">
+    <defs>
+      <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#57534A"/>
+      </marker>
+      <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#FF4D26"/>
+      </marker>
+      <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#7B5CFF"/>
+      </marker>
+    </defs>
+
+    <rect width="100%" height="100%" fill="#FAF9F5"/>
+
+    <!-- ══ 라이프라인 ══ -->
+    <line x1="100" y1="88" x2="100" y2="536" stroke="rgba(23,21,15,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+    <line x1="280" y1="88" x2="280" y2="536" stroke="rgba(23,21,15,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+    <line x1="460" y1="88" x2="460" y2="536" stroke="rgba(23,21,15,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+    <line x1="640" y1="88" x2="640" y2="536" stroke="rgba(23,21,15,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+    <line x1="820" y1="88" x2="820" y2="536" stroke="rgba(23,21,15,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+
+    <!-- ══ 활성 바 ══ -->
+    <rect x="276" y="120" width="8" height="88" fill="rgba(23,21,15,0.06)" stroke="#57534A" stroke-width="0.8"/>
+    <rect x="636" y="264" width="8" height="96" fill="rgba(23,21,15,0.06)" stroke="#57534A" stroke-width="0.8"/>
+    <rect x="276" y="424" width="8" height="88" fill="rgba(23,21,15,0.06)" stroke="#57534A" stroke-width="0.8"/>
+
+    <!-- ══ 메시지 (시간 위→아래) ══ -->
+    <!-- 1 -->
+    <line x1="100" y1="128" x2="276" y2="128" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="124" y="108" width="128" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="188" y="117" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">여정 완주 · "확정"</text>
+    <!-- 2 -->
+    <line x1="284" y1="168" x2="460" y2="168" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="300" y="148" width="144" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="372" y="157" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">카드 v1 + 근거 동결</text>
+    <!-- 3 (return) -->
+    <line x1="276" y1="200" x2="100" y2="200" stroke="#57534A" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+    <rect x="132" y="180" width="112" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="188" y="189" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">감시 시작 안내</text>
+
+    <!-- 시간 구분선 -->
+    <line x1="40" y1="236" x2="880" y2="236" stroke="rgba(23,21,15,0.15)" stroke-width="0.8" stroke-dasharray="6,4"/>
+    <rect x="368" y="228" width="184" height="16" rx="2" fill="#FAF9F5"/>
+    <text x="460" y="240" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.1em">— 매일 마감 후 · 스케줄러 —</text>
+
+    <!-- 4 -->
+    <line x1="636" y1="272" x2="460" y2="272" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="492" y="252" width="112" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="548" y="261" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">활성 카드 조회</text>
+    <!-- 5 self-loop -->
+    <path d="M 644,300 H 692 Q 700,300 700,308 V 316 Q 700,324 692,324 H 648"
+          fill="none" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="712" y="300" width="168" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="716" y="309" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" letter-spacing="0.06em">재수집 · diff · 조건 판정</text>
+    <!-- 6 -->
+    <line x1="644" y1="352" x2="816" y2="352" stroke="#7B5CFF" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+    <rect x="664" y="332" width="132" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="730" y="341" fill="#7B5CFF" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">변화 알림 + 링크</text>
+    <!-- 7 (디스코드 → 사용자, 전체 가로지름) -->
+    <line x1="816" y1="392" x2="104" y2="392" stroke="#7B5CFF" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-link)"/>
+    <rect x="416" y="372" width="88" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="460" y="381" fill="#7B5CFF" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">푸시 알림</text>
+    <!-- 8 (헤드라인 — 코랄) -->
+    <line x1="100" y1="432" x2="276" y2="432" stroke="#FF4D26" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+    <rect x="112" y="412" width="152" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="188" y="421" fill="#FF4D26" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">재질문 세션 (?card=)</text>
+    <!-- 9 -->
+    <line x1="284" y1="472" x2="460" y2="472" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="292" y="452" width="160" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="372" y="461" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">카드 v2 (v1 supersede)</text>
+    <!-- 10 (return) -->
+    <line x1="276" y1="504" x2="100" y2="504" stroke="#57534A" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+    <rect x="136" y="484" width="104" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="188" y="493" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">새 기준 확정</text>
+
+    <!-- ══ 액터 박스 ══ -->
+    <rect x="30" y="40" width="140" height="48" rx="6" fill="#FAF9F5"/>
+    <rect x="30" y="40" width="140" height="48" rx="6" fill="rgba(87,83,74,0.1)" stroke="#8F8B80" stroke-width="1"/>
+    <text x="100" y="68" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">사용자</text>
+
+    <rect x="210" y="40" width="140" height="48" rx="6" fill="#FAF9F5"/>
+    <rect x="210" y="40" width="140" height="48" rx="6" fill="#FFE9E2" stroke="#FF4D26" stroke-width="1"/>
+    <text x="280" y="62" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">소크라 웹</text>
+    <text x="280" y="78" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">대화 엔진</text>
+
+    <rect x="390" y="40" width="140" height="48" rx="6" fill="#FAF9F5"/>
+    <rect x="390" y="40" width="140" height="48" rx="6" fill="rgba(23,21,15,0.05)" stroke="#57534A" stroke-width="1"/>
+    <text x="460" y="62" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">스토리지</text>
+    <text x="460" y="78" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">decision_cards</text>
+
+    <rect x="570" y="40" width="140" height="48" rx="6" fill="#FAF9F5"/>
+    <rect x="570" y="40" width="140" height="48" rx="6" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+    <text x="640" y="62" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">카드 감시</text>
+    <text x="640" y="78" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">watchcards</text>
+
+    <rect x="750" y="40" width="140" height="48" rx="6" fill="#FAF9F5"/>
+    <rect x="750" y="40" width="140" height="48" rx="6" fill="rgba(23,21,15,0.03)" stroke="rgba(23,21,15,0.3)" stroke-width="1"/>
+    <text x="820" y="62" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">디스코드</text>
+    <text x="820" y="78" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace" text-anchor="middle">알림 채널</text>
+
+    <!-- ══ 범례 ══ -->
+    <line x1="40" y1="560" x2="880" y2="560" stroke="rgba(23,21,15,0.1)" stroke-width="0.8"/>
+    <text x="40" y="580" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace" letter-spacing="0.14em">LEGEND</text>
+    <line x1="120" y1="576" x2="152" y2="576" stroke="#57534A" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <text x="160" y="580" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">호출</text>
+    <line x1="220" y1="576" x2="252" y2="576" stroke="#57534A" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+    <text x="260" y="580" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">응답</text>
+    <line x1="320" y1="576" x2="352" y2="576" stroke="#7B5CFF" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+    <text x="360" y="580" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">알림 경로</text>
+    <line x1="460" y1="576" x2="492" y2="576" stroke="#FF4D26" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+    <text x="500" y="580" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">루프 폐합 — 사용자의 재판단</text>
+  </svg>
+
+  <p class="colophon">SOCRA v2 · §4.5 LIVING DECISION CARD · docs/architecture-loop.html</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>소크라 데이터 모델</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif+KR:wght@400;600&family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --paper:#FAF9F5; --ink:#17150F; --muted:#57534A; --soft:#8F8B80;
+          --rule:rgba(23,21,15,0.09); --accent:#FF4D26; --accent-tint:#FFE9E2; }
+  * { margin:0; box-sizing:border-box; }
+  body { background:var(--paper); color:var(--ink); padding:48px 32px;
+         font-family:'Geist','Noto Sans KR',sans-serif; }
+  .wrap { max-width:960px; margin:0 auto; }
+  .eyebrow { font-family:'Geist Mono',monospace; font-size:11px; letter-spacing:0.18em;
+             color:var(--soft); text-transform:uppercase; margin-bottom:8px; }
+  h1 { font-family:'Instrument Serif','Noto Serif KR',serif; font-weight:400;
+       font-size:1.75rem; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:14px; margin-bottom:32px; }
+  svg { width:100%; height:auto; display:block; }
+  .colophon { font-family:'Geist Mono',monospace; font-size:10px; color:var(--soft);
+              border-top:1px solid var(--rule); margin-top:32px; padding-top:12px; letter-spacing:0.08em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">SOCRA v2 · DETAIL 2/2 · DATA MODEL</p>
+  <h1>소크라 데이터 모델</h1>
+  <p class="subtitle">결정 카드를 중심으로 — 대화가 카드가 되고, 카드가 감시되고, 지식이 쌓인다</p>
+
+  <svg viewBox="0 0 920 576" xmlns="http://www.w3.org/2000/svg" font-family="'Geist','Noto Sans KR',sans-serif">
+    <rect width="100%" height="100%" fill="#FAF9F5"/>
+
+    <!-- ══ 관계선 (엔티티보다 먼저) ══ -->
+    <!-- sessions 1—N turns -->
+    <line x1="150" y1="184" x2="150" y2="232" stroke="#57534A" stroke-width="1"/>
+    <text x="162" y="198" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">1</text>
+    <text x="162" y="228" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">N</text>
+    <!-- sessions 1—0..1 cards -->
+    <line x1="260" y1="112" x2="360" y2="112" stroke="#57534A" stroke-width="1"/>
+    <text x="272" y="104" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">1</text>
+    <text x="324" y="104" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">0..1</text>
+    <rect x="284" y="116" width="36" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="302" y="125" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">확정</text>
+    <!-- cards 1—N alerts -->
+    <line x1="600" y1="104" x2="680" y2="104" stroke="#57534A" stroke-width="1"/>
+    <text x="608" y="96" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">1</text>
+    <text x="664" y="96" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">N</text>
+    <rect x="616" y="108" width="48" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="640" y="117" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">§4.5</text>
+    <!-- cards N—1 watchlist -->
+    <line x1="480" y1="200" x2="480" y2="264" stroke="#57534A" stroke-width="1"/>
+    <text x="492" y="214" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">N</text>
+    <text x="492" y="260" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">1</text>
+    <!-- watchlist 1—N panel_runs -->
+    <line x1="600" y1="292" x2="680" y2="292" stroke="#57534A" stroke-width="1"/>
+    <text x="608" y="284" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">1</text>
+    <text x="664" y="284" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">N</text>
+    <rect x="604" y="296" width="72" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="640" y="305" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">일별 판정</text>
+    <!-- sessions N—1 watchlist (자동 등록, 엘보) -->
+    <path d="M 260,152 H 300 Q 308,152 308,160 V 284 Q 308,292 316,292 H 360"
+          fill="none" stroke="#57534A" stroke-width="1"/>
+    <text x="272" y="144" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">N</text>
+    <text x="340" y="284" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">1</text>
+    <rect x="320" y="208" width="72" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="356" y="217" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">자동 등록</text>
+    <!-- concepts 1—N mastery -->
+    <line x1="260" y1="432" x2="360" y2="432" stroke="#57534A" stroke-width="1"/>
+    <text x="272" y="424" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">1</text>
+    <text x="340" y="424" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace">N</text>
+    <rect x="280" y="436" width="56" height="12" rx="2" fill="#FAF9F5"/>
+    <text x="308" y="445" fill="#8F8B80" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">숙련도</text>
+
+    <!-- ══ 엔티티 ══ -->
+    <!-- socra_sessions -->
+    <g>
+      <rect x="40" y="64" width="220" height="120" rx="6" fill="#FAF9F5"/>
+      <rect x="40" y="64" width="220" height="120" rx="6" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+      <line x1="40" y1="92" x2="260" y2="92" stroke="rgba(23,21,15,0.12)" stroke-width="0.8"/>
+      <text x="52" y="82" fill="rgba(23,21,15,0.4)" font-size="7" font-family="'Geist Mono',monospace" letter-spacing="0.1em">ENTITY</text>
+      <text x="150" y="83" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">socra_sessions</text>
+      <text x="52" y="110" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace"># session_id</text>
+      <text x="52" y="126" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">symbol · stage</text>
+      <text x="52" y="142" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">kind (journey|recheck)</text>
+      <text x="52" y="158" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">→ ref_card_id</text>
+      <text x="52" y="174" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">evidence_md</text>
+    </g>
+    <!-- socra_turns -->
+    <g>
+      <rect x="40" y="232" width="220" height="104" rx="6" fill="#FAF9F5"/>
+      <rect x="40" y="232" width="220" height="104" rx="6" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+      <line x1="40" y1="260" x2="260" y2="260" stroke="rgba(23,21,15,0.12)" stroke-width="0.8"/>
+      <text x="52" y="250" fill="rgba(23,21,15,0.4)" font-size="7" font-family="'Geist Mono',monospace" letter-spacing="0.1em">ENTITY</text>
+      <text x="150" y="251" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">socra_turns</text>
+      <text x="52" y="278" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">→ session_id</text>
+      <text x="52" y="294" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">role (bot|user)</text>
+      <text x="52" y="310" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">content · stage</text>
+      <text x="52" y="326" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">created_at</text>
+    </g>
+    <!-- decision_cards [ROOT] -->
+    <g>
+      <rect x="360" y="48" width="240" height="152" rx="6" fill="#FAF9F5"/>
+      <rect x="360" y="48" width="240" height="152" rx="6" fill="#FFE9E2" stroke="#FF4D26" stroke-width="1"/>
+      <line x1="360" y1="76" x2="600" y2="76" stroke="rgba(255,77,38,0.25)" stroke-width="0.8"/>
+      <text x="372" y="66" fill="#FF4D26" font-size="7" font-family="'Geist Mono',monospace" letter-spacing="0.1em">ROOT</text>
+      <text x="480" y="67" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">decision_cards</text>
+      <text x="372" y="94" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace"># card_id · version</text>
+      <text x="372" y="110" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">→ session_id</text>
+      <text x="372" y="126" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">thesis (사용자의 언어)</text>
+      <text x="372" y="142" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">target/stop_price + 이유</text>
+      <text x="372" y="158" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">recheck_conditions[]</text>
+      <text x="372" y="174" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">evidence_snapshot (동결)</text>
+      <text x="372" y="190" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">status · superseded_by</text>
+    </g>
+    <!-- card_alerts -->
+    <g>
+      <rect x="680" y="64" width="200" height="88" rx="6" fill="#FAF9F5"/>
+      <rect x="680" y="64" width="200" height="88" rx="6" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+      <line x1="680" y1="92" x2="880" y2="92" stroke="rgba(23,21,15,0.12)" stroke-width="0.8"/>
+      <text x="692" y="82" fill="rgba(23,21,15,0.4)" font-size="7" font-family="'Geist Mono',monospace" letter-spacing="0.1em">ENTITY</text>
+      <text x="780" y="83" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">card_alerts</text>
+      <text x="692" y="110" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">→ card_id</text>
+      <text x="692" y="126" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">kind (flip|price|recheck)</text>
+      <text x="692" y="142" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">message · created_at</text>
+    </g>
+    <!-- panel_runs -->
+    <g>
+      <rect x="680" y="208" width="200" height="104" rx="6" fill="#FAF9F5"/>
+      <rect x="680" y="208" width="200" height="104" rx="6" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+      <line x1="680" y1="236" x2="880" y2="236" stroke="rgba(23,21,15,0.12)" stroke-width="0.8"/>
+      <text x="692" y="226" fill="rgba(23,21,15,0.4)" font-size="7" font-family="'Geist Mono',monospace" letter-spacing="0.1em">ENTITY</text>
+      <text x="780" y="227" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">panel_runs</text>
+      <text x="692" y="254" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace"># symbol + run_date</text>
+      <text x="692" y="270" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">verdicts_json (6인)</text>
+      <text x="692" y="286" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">consensus_json</text>
+      <text x="692" y="302" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">→ 시뮬레이션 소비</text>
+    </g>
+    <!-- watchlist -->
+    <g>
+      <rect x="360" y="264" width="240" height="72" rx="6" fill="#FAF9F5"/>
+      <rect x="360" y="264" width="240" height="72" rx="6" fill="rgba(23,21,15,0.05)" stroke="#57534A" stroke-width="1"/>
+      <line x1="360" y1="292" x2="600" y2="292" stroke="rgba(23,21,15,0.12)" stroke-width="0.8"/>
+      <text x="372" y="282" fill="rgba(23,21,15,0.4)" font-size="7" font-family="'Geist Mono',monospace" letter-spacing="0.1em">V1 공유</text>
+      <text x="480" y="283" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">watchlist</text>
+      <text x="372" y="310" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace"># symbol · name</text>
+      <text x="372" y="326" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">→ 시그널·브리핑과 공유</text>
+    </g>
+    <!-- concepts -->
+    <g>
+      <rect x="40" y="392" width="220" height="88" rx="6" fill="#FAF9F5"/>
+      <rect x="40" y="392" width="220" height="88" rx="6" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+      <line x1="40" y1="420" x2="260" y2="420" stroke="rgba(23,21,15,0.12)" stroke-width="0.8"/>
+      <text x="52" y="410" fill="rgba(23,21,15,0.4)" font-size="7" font-family="'Geist Mono',monospace" letter-spacing="0.1em">ENTITY</text>
+      <text x="150" y="411" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">concepts</text>
+      <text x="52" y="438" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace"># slug (30개 사전)</text>
+      <text x="52" y="454" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">term · aliases[]</text>
+      <text x="52" y="470" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">short_def (범례용)</text>
+    </g>
+    <!-- concept_mastery -->
+    <g>
+      <rect x="360" y="392" width="240" height="104" rx="6" fill="#FAF9F5"/>
+      <rect x="360" y="392" width="240" height="104" rx="6" fill="#ffffff" stroke="#17150F" stroke-width="1"/>
+      <line x1="360" y1="420" x2="600" y2="420" stroke="rgba(23,21,15,0.12)" stroke-width="0.8"/>
+      <text x="372" y="410" fill="rgba(23,21,15,0.4)" font-size="7" font-family="'Geist Mono',monospace" letter-spacing="0.1em">ENTITY</text>
+      <text x="480" y="411" fill="#17150F" font-size="12" font-weight="600" text-anchor="middle">concept_mastery</text>
+      <text x="372" y="438" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">→ slug · user_id</text>
+      <text x="372" y="454" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">level 0~3 (노출→질문→입증)</text>
+      <text x="372" y="470" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">exposures</text>
+      <text x="372" y="486" fill="#57534A" font-size="9" font-family="'Geist Mono',monospace">레벨3 → 범례 생략</text>
+    </g>
+
+    <!-- ══ 범례 ══ -->
+    <line x1="40" y1="520" x2="880" y2="520" stroke="rgba(23,21,15,0.1)" stroke-width="0.8"/>
+    <text x="40" y="540" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace" letter-spacing="0.14em">LEGEND</text>
+    <rect x="120" y="532" width="12" height="12" rx="2" fill="#FFE9E2" stroke="#FF4D26" stroke-width="1"/>
+    <text x="140" y="541" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">루트 엔티티 (판단의 원장)</text>
+    <text x="340" y="541" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace"># PK</text>
+    <text x="400" y="541" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">→ FK/참조</text>
+    <rect x="500" y="532" width="12" height="12" rx="2" fill="rgba(23,21,15,0.05)" stroke="#57534A" stroke-width="1"/>
+    <text x="520" y="541" fill="#57534A" font-size="8" font-family="'Geist Mono',monospace">v1 인프라와 공유</text>
+  </svg>
+
+  <p class="colophon">SOCRA v2 · MIGRATIONS 008–011 · docs/architecture-er.html</p>
+</div>
+</body>
+</html>
