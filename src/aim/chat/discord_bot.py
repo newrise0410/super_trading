@@ -24,6 +24,14 @@ CONSULT_CHANNEL = "상담"
 _CONTEXT_TTL_SEC = 120
 _DISCORD_LIMIT = 1900
 
+
+def _parse_why(text: str) -> str | None:
+    """'/why 005930' · 'why AAPL' · '왜 005930' → 심볼 추출."""
+    import re  # noqa: PLC0415
+
+    m = re.match(r"^(?:/?why|왜)\s+([A-Za-z0-9]{1,10})$", text, re.IGNORECASE)
+    return m.group(1).upper() if m else None
+
 SYS_TMPL = """너는 'AIM 투자매니저' — 사용자 전용 AI 투자 상담사다.
 아래는 사용자의 실제 포트폴리오와 최근 AI 판단 기록이다. 이를 근거로 대화하라.
 
@@ -128,6 +136,17 @@ def run_consult_bot(settings: Settings) -> None:
         history[channel_id].append(("AIM", reply))
         return reply
 
+    def _why_reply(symbol: str) -> str:
+        from aim.brain.why import render_why  # noqa: PLC0415
+        from aim.storage import db  # noqa: PLC0415
+
+        conn = db.connect(settings.db_path)
+        try:
+            db.migrate(conn)
+            return render_why(conn, symbol)
+        finally:
+            conn.close()
+
     def _diagnose_reply() -> str:
         from aim.brain.diagnose import diagnose_portfolio  # noqa: PLC0415
         from aim.portfolio.prices import make_lookup, usdkrw  # noqa: PLC0415
@@ -172,8 +191,12 @@ def run_consult_bot(settings: Settings) -> None:
         if not text:
             return
         async with message.channel.typing():
-            if text.replace("!", "") in ("진단", "진단해줘", "포트폴리오진단"):
+            plain = text.replace("!", "").strip()
+            why_symbol = _parse_why(plain)
+            if plain in ("진단", "진단해줘", "포트폴리오진단"):
                 reply = await asyncio.to_thread(_diagnose_reply)
+            elif why_symbol:
+                reply = await asyncio.to_thread(_why_reply, why_symbol)
             else:
                 reply = await asyncio.to_thread(_chat_reply, message.channel.id, text)
         for chunk in split_message(reply, _DISCORD_LIMIT):

@@ -36,12 +36,18 @@ def build_bus(settings: Settings) -> EventBus:
 
         provider = PykrxKRProvider()
 
+    from aim.pipelines import run_us_close_briefing  # noqa: PLC0415
+
     bus = EventBus()
     bus.subscribe(
         "market_close_kr",
         lambda **kw: run_kr_close_briefing(settings, provider, router),
     )
-    # TODO(P1+): market_open_kr / market_open_us / market_close_us 핸들러
+    bus.subscribe(
+        "market_close_us",
+        lambda **kw: run_us_close_briefing(settings, router),
+    )
+    # TODO: market_open_kr / market_open_us 장전 브리핑 핸들러
     return bus
 
 

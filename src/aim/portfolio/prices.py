@@ -38,6 +38,29 @@ def usdkrw() -> float | None:
         return None
 
 
+def kr_lookup_for(settings, conn) -> KRLookup:
+    """KR 시세 룩업 — KIS(키 있으면) 우선, pykrx 폴백."""
+    if settings.kis_app_key and settings.kis_app_secret:
+        try:
+            from aim.data.kis.auth import KISAuth  # noqa: PLC0415
+            from aim.data.kis.intraday import KISIntradayProvider  # noqa: PLC0415
+
+            provider = KISIntradayProvider(
+                conn, KISAuth(settings.kis_app_key, settings.kis_app_secret, settings.kis_env)
+            )
+
+            def lookup(symbol: str):
+                quotes = provider.snapshot([symbol])
+                return (quotes[0].price, quotes[0].change_pct) if quotes else None
+
+            return lookup
+        except Exception:  # noqa: BLE001
+            logger.exception("KIS lookup init failed — falling back to pykrx")
+    from aim.data.krx import PykrxKRProvider  # noqa: PLC0415
+
+    return PykrxKRProvider().last_price
+
+
 def make_lookup(kr_lookup: KRLookup, us_lookup=us_last_price) -> PriceLookup:
     """(symbol, market) 라우팅 룩업 생성."""
 

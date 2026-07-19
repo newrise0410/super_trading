@@ -56,7 +56,7 @@ def main() -> None:
     sub.add_parser("init-db", help="DB 생성/마이그레이션")
 
     p_brief = sub.add_parser("briefing", help="리포트 생성·발송")
-    p_brief.add_argument("kind", choices=["kr-close"], help="리포트 종류 (P1: kr-close)")
+    p_brief.add_argument("kind", choices=["kr-close", "us-close"], help="리포트 종류")
     p_brief.add_argument("--date", default=None, help="YYYY-MM-DD (기본: 오늘)")
     p_brief.add_argument("--mock", action="store_true", help="캔드 데이터 사용 (의존성/네트워크 불필요)")
     p_brief.add_argument("--channel", default="console", choices=["console", "telegram", "discord"])
@@ -105,6 +105,13 @@ def main() -> None:
     p_an.add_argument("--date", default=None, help="기준일 YYYY-MM-DD (기본: 오늘)")
     p_an.add_argument("--show-debate", action="store_true", help="Bull/Bear 전문 출력")
 
+    p_why = sub.add_parser("why", help="판단 근거 재현 (/why)")
+    p_why.add_argument("symbol")
+
+    p_sim = sub.add_parser("sim", help="전략 시뮬레이션")
+    sim_sub = p_sim.add_subparsers(dest="sim_command", required=True)
+    sim_sub.add_parser("status", help="리더보드 출력")
+
     sub.add_parser("test-telegram", help="텔레그램 연결 테스트 (chat_id 미설정 시 자동 감지)")
     sub.add_parser("test-discord", help="디스코드 웹훅 연결 테스트")
     sub.add_parser("discord-setup", help="디스코드 서버 프로비저닝 — 채널·웹훅 자동 생성 + .env 기록")
@@ -122,6 +129,42 @@ def main() -> None:
             conn.close()
         print(f"DB ready: {settings.db_path}")
         print(f"applied migrations: {applied or '(up to date)'}")
+
+    elif args.command == "why":
+        from aim.brain.why import render_why
+        from aim.storage import db
+
+        conn = db.connect(settings.db_path)
+        try:
+            db.migrate(conn)
+            print(render_why(conn, args.symbol.upper()))
+        finally:
+            conn.close()
+
+    elif args.command == "sim":
+        from aim.simulation.engine import render_leaderboard
+        from aim.storage import db
+
+        conn = db.connect(settings.db_path)
+        try:
+            db.migrate(conn)
+            board = render_leaderboard(conn)
+        finally:
+            conn.close()
+        print(board or "(시뮬레이션 기록 없음 — 마감 브리핑 실행 시 자동으로 사이클이 돕니다)")
+
+    elif args.command == "briefing" and args.kind == "us-close":
+        from aim.delivery.router import NotificationRouter, build_router
+        from aim.pipelines import run_us_close_briefing
+
+        if args.channel == "discord":
+            router = build_router(settings, respect_dry_run=False, include_console=False)
+        else:
+            from aim.delivery.console import ConsoleNotifier
+
+            router = NotificationRouter({}, [ConsoleNotifier()])
+        report_id = run_us_close_briefing(settings, router, date=args.date)
+        print(f"\nreport saved: {report_id}")
 
     elif args.command == "briefing":
         from aim.pipelines import run_kr_close_briefing

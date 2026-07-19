@@ -35,6 +35,18 @@ def run_kr_close_briefing(
     conn = db.connect(settings.db_path)
     try:
         db.migrate(conn)
+
+        # 전략 시뮬레이션 마감 사이클 + 리더보드 (P3) — 실패해도 브리핑은 발송
+        try:
+            from aim.simulation.engine import render_leaderboard, run_close_cycle  # noqa: PLC0415
+
+            run_close_cycle(conn, snap, provider.last_price, date)
+            leaderboard = render_leaderboard(conn)
+            if leaderboard:
+                master_md += f"\n\n{leaderboard}"
+        except Exception:  # noqa: BLE001
+            logger.exception("simulation cycle failed")
+
         report_id = ReportsRepository(conn).save(
             kind="kr_close", market="KR", master_md=master_md, data=snap.to_dict()
         )
@@ -50,4 +62,33 @@ def run_kr_close_briefing(
     title = f"🇰🇷 마감 브리핑 {date}"
     router.send("kr", title, final_md)  # #한국장 채널 (미설정 시 default 폴백)
 
+    return report_id
+
+
+def run_us_close_briefing(
+    settings: Settings, router: NotificationRouter, date: str | None = None
+) -> str:
+    """US 마감 브리핑 (P4) — yfinance 지수 + 환율 + 내 미국 보유."""
+    from aim.portfolio.prices import kr_lookup_for, make_lookup, usdkrw as fetch_fx  # noqa: PLC0415
+    from aim.reports.us import build_us_close_briefing, fetch_us_indices  # noqa: PLC0415
+
+    date = date or date_cls.today().isoformat()
+    logger.info("US close briefing for %s", date)
+
+    indices = fetch_us_indices()
+    fx = fetch_fx()
+
+    conn = db.connect(settings.db_path)
+    try:
+        db.migrate(conn)
+        personal_md = build_personal_section(conn, make_lookup(kr_lookup_for(settings, conn)), fx)
+        master_md = build_us_close_briefing(date, indices, fx, personal_md)
+        report_id = ReportsRepository(conn).save(
+            kind="us_close", market="US", master_md=master_md,
+            data={"indices": indices, "usdkrw": fx},
+        )
+    finally:
+        conn.close()
+
+    router.send("us", f"🇺🇸 미국장 마감 브리핑 {date}", master_md)
     return report_id
