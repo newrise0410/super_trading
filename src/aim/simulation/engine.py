@@ -35,10 +35,13 @@ PriceFn = Callable[[str], tuple[float, float] | None]  # (symbol) -> (price, cha
 
 def run_close_cycle(
     conn: sqlite3.Connection, snapshot: MarketSnapshot, last_price: PriceFn, date: str
-) -> dict[str, float]:
-    """모든 전략의 마감 사이클 실행 → {strategy: 평가액}."""
+) -> tuple[dict[str, float], list[dict]]:
+    """모든 전략의 마감 사이클 실행 → ({strategy: 평가액}, 이번 사이클 체결 목록)."""
     repo = SimulationRepository(conn)
     values: dict[str, float] = {}
+    last_trade_id = conn.execute(
+        "SELECT COALESCE(MAX(id), 0) AS m FROM virtual_trades"
+    ).fetchone()["m"]
 
     for strategy in STRATEGIES:
         pf = repo.ensure_portfolio(strategy, "KR", INITIAL_CASH)
@@ -47,7 +50,13 @@ def run_close_cycle(
         except Exception:  # noqa: BLE001 — 전략별 실패 격리
             logger.exception("strategy %s cycle failed", strategy)
         values[strategy] = _mark_equity(repo, pf["id"], last_price, date)
-    return values
+
+    trades = [dict(r) for r in conn.execute(
+        "SELECT t.side, t.symbol, t.quantity, t.price, p.strategy"
+        " FROM virtual_trades t JOIN virtual_portfolios p ON p.id = t.portfolio_id"
+        " WHERE t.id > ? ORDER BY t.id", (last_trade_id,),
+    )]
+    return values, trades
 
 
 # ── 전략별 사이클 ─────────────────────────────────────────────────

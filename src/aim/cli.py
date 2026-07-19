@@ -106,6 +106,8 @@ def main() -> None:
     p_an.add_argument("symbol", help="종목코드 (예: 005930)")
     p_an.add_argument("--date", default=None, help="기준일 YYYY-MM-DD (기본: 오늘)")
     p_an.add_argument("--show-debate", action="store_true", help="Bull/Bear 전문 출력")
+    p_an.add_argument("--channel", default="console", choices=["console", "discord"],
+                      help="discord: 카드를 #ai-판단 채널로 발송")
 
     p_why = sub.add_parser("why", help="판단 근거 재현 (/why)")
     p_why.add_argument("symbol")
@@ -486,6 +488,17 @@ def main() -> None:
         print(f"\n{result.card_md}")
         print(f"\ndecision saved: {result.decision_id}")
 
+        if args.channel == "discord":
+            from aim.delivery.router import build_router
+
+            router = build_router(settings, respect_dry_run=False, include_console=False)
+            router.send(
+                ("decisions",),
+                f"🧠 AI 판단 — {evidence.name} ({evidence.symbol})",
+                result.card_md,
+            )
+            print("#ai-판단 채널로 발송 완료")
+
     elif args.command == "test-telegram":
         import requests
 
@@ -532,6 +545,8 @@ def main() -> None:
         route_desc = {
             "default": "기본(폴백)", "kr": "한국장 브리핑", "us": "미국장 브리핑",
             "signals": "관심종목 시그널", "surge": "급등주 시그널", "disclosure": "공시 알림",
+            "urgent": "긴급 (critical 횡단)", "decisions": "AI 판단 카드",
+            "sim": "전략 시뮬 체결", "portfolio": "포트폴리오 진단", "consult": "상담",
             "weekly": "주간 리포트",
         }
         for route, url in sorted(settings.discord_webhooks.items()):

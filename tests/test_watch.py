@@ -129,6 +129,34 @@ def test_tracker_demo_scenario_fires_combo(conn):
     assert len(facts) == 2  # DISCLOSURE + COMBO
 
 
+def test_critical_signals_also_route_to_urgent(conn):
+    """urgent 채널 설정 시 critical(서지 z≥5, COMBO)만 추가 발송."""
+    quotes, disclosures, symbol = demo_scenario(BaselineRepository(conn))
+    WatchlistRepository(conn).add(symbol, "삼성전자")
+    urgent, signals_sink = ListNotifier(), ListNotifier()
+    router = NotificationRouter({"urgent": [urgent], "signals": [signals_sink]}, [ListNotifier()])
+    tracker = WatchTracker(conn, quotes, disclosures, router)
+
+    tracker.run_once(datetime(2026, 7, 20, 10, 0))
+    fired = tracker.run_once(datetime(2026, 7, 20, 10, 5))
+
+    critical = [s for s in fired if s.severity == "critical"]
+    assert len(critical) == 2                       # VOLUME_SURGE(z=7.7) + COMBO
+    assert len(urgent.sent) == 2                    # critical만 횡단 수신
+    assert len(signals_sink.sent) == len(fired)     # 통합 채널은 전부 수신
+
+
+def test_no_urgent_route_no_duplicates(conn):
+    """urgent 미설정이면 추가 발송 없음 (default 중복 방지) — 기존 데모 테스트가 보장."""
+    quotes, disclosures, symbol = demo_scenario(BaselineRepository(conn))
+    WatchlistRepository(conn).add(symbol, "삼성전자")
+    sink = ListNotifier()
+    tracker = WatchTracker(conn, quotes, disclosures, NotificationRouter({}, [sink]))
+    tracker.run_once(datetime(2026, 7, 20, 10, 0))
+    fired = tracker.run_once(datetime(2026, 7, 20, 10, 5))
+    assert len(sink.sent) == len(fired)             # 시그널당 정확히 1건
+
+
 def test_tracker_empty_watchlist_noop(conn):
     quotes, disclosures, _ = demo_scenario(BaselineRepository(conn))
     tracker = WatchTracker(conn, quotes, disclosures, NotificationRouter({}, [ListNotifier()]))

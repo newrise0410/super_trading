@@ -39,8 +39,14 @@ def _snap(gainers=()):
 
 
 def test_benchmark_all_in_once(conn):
-    run_close_cycle(conn, _snap(), _lookup, "2026-07-20")
-    run_close_cycle(conn, _snap(), _lookup, "2026-07-21")  # 재실행에도 중복 매수 없음
+    _, trades1 = run_close_cycle(conn, _snap(), _lookup, "2026-07-20")
+    _, trades2 = run_close_cycle(conn, _snap(), _lookup, "2026-07-21")  # 재실행에도 중복 매수 없음
+
+    # 체결 수집 — 첫 사이클만 벤치마크 매수 1건, 이후 없음
+    assert [(t["strategy"], t["side"], t["symbol"]) for t in trades1] == [
+        ("benchmark", "BUY", BENCHMARK_SYMBOL)
+    ]
+    assert trades2 == []
 
     pf = conn.execute("SELECT * FROM virtual_portfolios WHERE strategy='benchmark'").fetchone()
     pos = conn.execute(

@@ -217,4 +217,8 @@ class WatchTracker:
         title = f"{icon} 관심종목 시그널 — {sig.name or sig.symbol}"
         body = f"**{sig.name}** ({sig.symbol}) [{sig.kind}]\n{sig.message}"
         routes = _SIGNAL_ROUTES.get(sig.kind, ("signals",))
-        return self._router.send(routes, title, body)
+        ok = self._router.send(routes, title, body)
+        # critical은 #긴급 채널에 추가 발송 — 단, 채널이 설정된 경우만 (default 중복 방지)
+        if sig.severity == "critical" and "urgent" in self._router.configured_routes:
+            self._router.send("urgent", title, body)
+        return ok

@@ -27,17 +27,25 @@ TYPE_FORUM = 15
 PERM_VIEW = 1024          # VIEW_CHANNEL
 PERM_SEND = 2048          # SEND_MESSAGES
 
-CATEGORY_NAME = "AIM 투자매니저"
 WEBHOOK_NAME = "AIM"
+OLD_CATEGORY_NAME = "AIM 투자매니저"  # 구버전 단일 카테고리 — 비면 정리
 
-# (채널명, 채널타입, .env 키, 비공개 여부) — 비공개: @everyone 숨김 + 봇만 접근
-# (서버 오너는 관리자 권한으로 항상 접근 가능)
-_CHANNEL_SPECS: list[tuple[str, int, str, bool]] = [
-    ("한국장-브리핑", TYPE_FORUM, "AIM_DISCORD_WEBHOOK_KR", False),
-    ("미국장-브리핑", TYPE_FORUM, "AIM_DISCORD_WEBHOOK_US", False),
-    ("관심종목-시그널", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_SIGNALS", False),
-    ("포트폴리오", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_PORTFOLIO", True),   # 손익 정보 — 비공개
-    ("상담", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_CONSULT", True),           # 개인 상담 — 비공개
+# (카테고리, 채널명, 채널타입, .env 키, 비공개 여부)
+# 비공개: @everyone 숨김 + 봇만 접근 (서버 오너는 관리자라 항상 접근 가능)
+_CHANNEL_SPECS: list[tuple[str, str, int, str, bool]] = [
+    # 📁 리포트
+    ("AIM 리포트", "한국장-브리핑", TYPE_FORUM, "AIM_DISCORD_WEBHOOK_KR", False),
+    ("AIM 리포트", "미국장-브리핑", TYPE_FORUM, "AIM_DISCORD_WEBHOOK_US", False),
+    # 📁 시그널 — surge/disclosure는 라우터 폴백 체인이 자동 우선 사용
+    ("AIM 시그널", "관심종목-시그널", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_SIGNALS", False),
+    ("AIM 시그널", "급등주", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_SURGE", False),
+    ("AIM 시그널", "공시", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_DISCLOSURE", False),
+    ("AIM 시그널", "긴급", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_URGENT", False),  # critical 횡단
+    # 📁 프라이빗 (전부 🔒)
+    ("AIM 프라이빗", "포트폴리오", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_PORTFOLIO", True),
+    ("AIM 프라이빗", "상담", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_CONSULT", True),
+    ("AIM 프라이빗", "ai-판단", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_DECISIONS", True),
+    ("AIM 프라이빗", "전략-시뮬", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_SIM", True),
 ]
 
 ReqFn = Callable[[str, str, dict[str, Any] | None], tuple[int, Any]]
@@ -112,6 +120,16 @@ class DiscordAdmin:
             body["parent_id"] = parent_id
         return self._req("POST", f"/guilds/{guild_id}/channels", body)
 
+    def move_channel(self, channel_id: str, parent_id: str) -> bool:
+        status, data = self._req("PATCH", f"/channels/{channel_id}", {"parent_id": parent_id})
+        if status >= 400:
+            logger.warning("move_channel failed for %s: %s", channel_id, data)
+        return status < 400
+
+    def delete_channel(self, channel_id: str) -> bool:
+        status, _ = self._req("DELETE", f"/channels/{channel_id}", None)
+        return status < 400
+
     def get_webhooks(self, channel_id: str) -> list[dict[str, Any]]:
         status, data = self._req("GET", f"/channels/{channel_id}/webhooks", None)
         return data if status == 200 else []
@@ -127,41 +145,48 @@ def provision(admin: DiscordAdmin, guild_id: str) -> ProvisionResult:
     result = ProvisionResult({}, [], [], [])
     channels = admin.get_channels(guild_id)
     by_name = {c["name"]: c for c in channels}
-
-    # 1) 카테고리 find-or-create
-    category = next(
-        (c for c in channels if c["type"] == TYPE_CATEGORY and c["name"] == CATEGORY_NAME), None
-    )
-    if category:
-        result.reused.append(f"카테고리 '{CATEGORY_NAME}'")
-    else:
-        status, category = admin.create_channel(guild_id, CATEGORY_NAME, TYPE_CATEGORY)
-        if status >= 400:
-            raise RuntimeError(f"카테고리 생성 실패 (HTTP {status}): {category}")
-        result.created.append(f"카테고리 '{CATEGORY_NAME}'")
-
     bot_id = admin.bot_user_id()
 
-    # 2) 채널 find-or-create (포럼 미지원 시 텍스트 폴백) + 비공개 채널 권한 보장
-    for name, ch_type, env_key, private in _CHANNEL_SPECS:
+    # 1) 카테고리 find-or-create (스펙 등장 순서 유지)
+    category_ids: dict[str, str] = {}
+    for cat_name in dict.fromkeys(spec[0] for spec in _CHANNEL_SPECS):
+        category = next(
+            (c for c in channels if c["type"] == TYPE_CATEGORY and c["name"] == cat_name), None
+        )
+        if category:
+            result.reused.append(f"카테고리 '{cat_name}'")
+        else:
+            status, category = admin.create_channel(guild_id, cat_name, TYPE_CATEGORY)
+            if status >= 400:
+                raise RuntimeError(f"카테고리 생성 실패 (HTTP {status}): {category}")
+            result.created.append(f"카테고리 '{cat_name}'")
+        category_ids[cat_name] = category["id"]
+
+    # 2) 채널 find-or-create + 카테고리 재배치 + 비공개 권한 보장 (전부 멱등)
+    for cat_name, name, ch_type, env_key, private in _CHANNEL_SPECS:
+        parent_id = category_ids[cat_name]
         channel = by_name.get(name)
         if channel:
             result.reused.append(f"채널 #{name}")
+            if channel.get("parent_id") != parent_id:
+                if admin.move_channel(channel["id"], parent_id):
+                    result.created.append(f"→ #{name} '{cat_name}'로 이동")
+                else:
+                    result.warnings.append(f"#{name}: 카테고리 이동 실패")
         else:
-            status, channel = admin.create_channel(guild_id, name, ch_type, category["id"])
+            status, channel = admin.create_channel(guild_id, name, ch_type, parent_id)
             if status >= 400 and ch_type == TYPE_FORUM:
                 result.warnings.append(
                     f"#{name}: 포럼 생성 불가(HTTP {status}) → 텍스트 채널로 대체. "
                     "서버 설정에서 '커뮤니티'를 활성화하면 포럼 사용 가능"
                 )
-                status, channel = admin.create_channel(guild_id, name, TYPE_TEXT, category["id"])
+                status, channel = admin.create_channel(guild_id, name, TYPE_TEXT, parent_id)
             if status >= 400:
                 result.warnings.append(f"#{name}: 채널 생성 실패 (HTTP {status}): {channel}")
                 continue
             kind = "포럼" if channel.get("type") == TYPE_FORUM else "텍스트"
             result.created.append(f"채널 #{name} ({kind})")
 
-        # 비공개 채널: 매 실행마다 권한 보장 (멱등 — 기존 채널도 비공개로 전환됨)
         if private:
             if admin.set_private(channel["id"], guild_id, bot_id):
                 result.reused.append(f"🔒 #{name} 비공개 권한 적용")
@@ -183,6 +208,16 @@ def provision(admin: DiscordAdmin, guild_id: str) -> ProvisionResult:
         result.env_updates[env_key] = (
             f"https://discord.com/api/webhooks/{webhook['id']}/{webhook['token']}"
         )
+
+    # 4) 구버전 카테고리 정리 — 비었으면 삭제
+    old = next(
+        (c for c in channels if c["type"] == TYPE_CATEGORY and c["name"] == OLD_CATEGORY_NAME), None
+    )
+    if old:
+        refreshed = admin.get_channels(guild_id)
+        if not any(c.get("parent_id") == old["id"] for c in refreshed):
+            if admin.delete_channel(old["id"]):
+                result.created.append(f"정리: 빈 카테고리 '{OLD_CATEGORY_NAME}' 삭제")
 
     return result
 

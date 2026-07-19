@@ -40,10 +40,19 @@ def run_kr_close_briefing(
         try:
             from aim.simulation.engine import render_leaderboard, run_close_cycle  # noqa: PLC0415
 
-            run_close_cycle(conn, snap, provider.last_price, date)
+            _, sim_trades = run_close_cycle(conn, snap, provider.last_price, date)
             leaderboard = render_leaderboard(conn)
             if leaderboard:
                 master_md += f"\n\n{leaderboard}"
+            # 체결 알림 → #전략-시뮬 (채널 설정된 경우만 — default 스팸 방지)
+            if sim_trades and "sim" in router.configured_routes:
+                label = {"benchmark": "벤치마크", "momentum": "모멘텀", "ai_debate": "AI 토론"}
+                lines = [
+                    f"- **{label.get(t['strategy'], t['strategy'])}** {t['side']}"
+                    f" {t['symbol']} {t['quantity']:,.2f}주 @ {t['price']:,.0f}"
+                    for t in sim_trades
+                ]
+                router.send("sim", f"🏁 시뮬 체결 {date}", "\n".join(lines))
         except Exception:  # noqa: BLE001
             logger.exception("simulation cycle failed")
 
