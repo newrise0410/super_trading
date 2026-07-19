@@ -80,6 +80,35 @@ def signals_data(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
     )]
 
 
+def market_summary(settings: Settings, conn: sqlite3.Connection) -> dict:
+    """첫 화면 증시현황 — KR(KIS) + US(yfinance) + 환율. 실패 축 격리."""
+    kr: list[list] = []
+    if settings.kis_app_key and settings.kis_app_secret:
+        try:
+            from aim.data.kis.auth import KISAuth  # noqa: PLC0415
+            from aim.data.kis.market import KISMarketProvider  # noqa: PLC0415
+
+            provider = KISMarketProvider(
+                conn, KISAuth(settings.kis_app_key, settings.kis_app_secret, settings.kis_env)
+            )
+            kr = [list(q) for q in provider.index_quotes()]
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        from aim.reports.us import fetch_us_indices  # noqa: PLC0415
+
+        us = [list(q) for q in fetch_us_indices()[:2]]  # S&P500·NASDAQ만 (첫 화면 간결)
+    except Exception:  # noqa: BLE001
+        us = []
+    try:
+        from aim.portfolio.prices import usdkrw  # noqa: PLC0415
+
+        fx = usdkrw()
+    except Exception:  # noqa: BLE001
+        fx = None
+    return {"kr": kr, "us": us, "usdkrw": fx}
+
+
 def socra_sessions_list(conn: sqlite3.Connection, user_id: str = "local") -> list[dict]:
     return [dict(r) for r in conn.execute(
         "SELECT session_id, symbol, name, stage, updated_at FROM socra_sessions"
@@ -148,6 +177,22 @@ def create_app(settings: Settings):
     @app.get("/dashboard", response_class=HTMLResponse)
     def dash_page() -> str:
         return _DASH_PATH.read_text(encoding="utf-8")
+
+    _mkt_cache: dict = {"at": 0.0, "data": None}
+
+    @app.get("/api/market/summary")
+    def market_sum():
+        import time as time_mod  # noqa: PLC0415
+
+        if _mkt_cache["data"] is not None and time_mod.time() - _mkt_cache["at"] < 600:
+            return _mkt_cache["data"]  # 10분 캐시 — 첫 화면 진입마다 API 폭주 방지
+        conn = _conn()
+        try:
+            data = market_summary(settings, conn)
+        finally:
+            conn.close()
+        _mkt_cache.update(at=time_mod.time(), data=data)
+        return data
 
     @app.get("/api/socra/sessions")
     def sessions_list():

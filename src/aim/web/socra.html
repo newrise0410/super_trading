@@ -91,6 +91,30 @@
           padding: 7px 14px; font-size: 13.5px; color: var(--ink2); cursor: pointer; }
   .chip:hover { border-color: var(--accent); color: var(--accent); }
 
+  /* 첫 화면 기본 콘텐츠 — 증시현황·리포트 */
+  #home-widgets { width: 100%; max-width: 680px; display: grid; gap: 14px; margin-top: 8px;
+                  text-align: left; }
+  .home-sec h3 { font-size: 12px; color: var(--muted); letter-spacing: .6px;
+                 text-transform: uppercase; margin-bottom: 8px; }
+  .mkt { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+  .mkt .t { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+            padding: 10px 12px; }
+  .mkt .t .n { font-size: 11.5px; color: var(--muted); }
+  .mkt .t .v { font-size: 16px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .mkt .t .c { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .up { color: var(--good); } .down { color: #E5484D; }
+  .rep-row { display: flex; gap: 10px; align-items: center; padding: 7px 10px;
+             border-radius: 8px; cursor: pointer; font-size: 13.5px; color: var(--ink2); }
+  .rep-row:hover { background: var(--surface); }
+  .rep-badge { font-size: 11.5px; border: 1px solid var(--border); border-radius: 99px;
+               padding: 1px 9px; color: var(--accent-ink); background: var(--accent-soft);
+               white-space: nowrap; }
+  #rep-view { display: none; background: var(--surface); border: 1px solid var(--border);
+              border-radius: 14px; padding: 18px 20px; margin-top: 10px; max-height: 46vh;
+              overflow-y: auto; font-family: Georgia, "Noto Serif KR", serif;
+              font-size: 14.5px; line-height: 1.75; }
+  #rep-view b { color: var(--accent-ink); }
+
   /* 입력창 */
   #inputbar { padding: 12px 0 22px; }
   .inputbox { display: flex; gap: 10px; background: var(--surface);
@@ -154,6 +178,15 @@
         <span class="chip" onclick="startWith('삼성전자 살까 말까?')">삼성전자 살까 말까?</span>
         <span class="chip" onclick="startWith('SK하이닉스 지금 사도 될까?')">SK하이닉스 지금 사도 될까?</span>
         <span class="chip" onclick="startWith('카카오 물타기 해야 하나?')">카카오 물타기 해야 하나?</span>
+      </div>
+      <div id="home-widgets">
+        <div class="home-sec"><h3>📊 오늘의 증시</h3><div class="mkt" id="mkt-tiles">
+          <div class="t"><div class="n">불러오는 중…</div></div>
+        </div></div>
+        <div class="home-sec"><h3>📋 최신 리포트</h3>
+          <div id="rep-list"><span class="muted" style="font-size:13px">불러오는 중…</span></div>
+          <div id="rep-view"></div>
+        </div>
       </div>
     </div>
 
@@ -341,7 +374,41 @@ for (const [inp, btn] of [['input','send'],['input0','send0']]) {
     e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px';
   });
 }
-loadSessions();
+/* ── 첫 화면 기본 콘텐츠: 증시현황 + 최신 리포트 ── */
+const KIND_LABEL = {kr_open:'🇰🇷 장전', kr_close:'🇰🇷 마감', us_open:'🇺🇸 장전',
+                    us_close:'🇺🇸 마감', portfolio_diag:'🩺 진단', weekly:'📊 주간'};
+function tile(name, value, change, digits) {
+  const cls = change > 0 ? 'up' : (change < 0 ? 'down' : '');
+  const arrow = change > 0 ? '▲' : (change < 0 ? '▼' : '');
+  return `<div class="t"><div class="n">${name}</div>
+    <div class="v">${Number(value).toLocaleString('ko-KR',{maximumFractionDigits:digits})}</div>
+    ${change==null?'':`<div class="c ${cls}">${arrow} ${Math.abs(change).toFixed(2)}%</div>`}</div>`;
+}
+async function loadHome() {
+  api('/api/market/summary').then(m => {
+    let html = '';
+    for (const [n,v,c] of (m.kr||[])) html += tile(n, v, c, 2);
+    for (const [n,v,c] of (m.us||[])) html += tile(n, v, c, 2);
+    if (m.usdkrw) html += tile('USD/KRW', m.usdkrw, null, 1);
+    $('mkt-tiles').innerHTML = html || '<div class="t"><div class="n">시세 조회 불가</div></div>';
+  });
+  api('/api/reports').then(rows => {
+    $('rep-list').innerHTML = rows.slice(0, 6).map(r =>
+      `<div class="rep-row" onclick="showHomeReport('${r.report_id}')">
+         <span class="rep-badge">${KIND_LABEL[r.kind]||r.kind}</span>
+         <span>${r.created_at.slice(0,16)}</span></div>`
+    ).join('') || '<span class="muted" style="font-size:13px">아직 리포트가 없어요 — 매일 장전·마감에 자동 생성됩니다</span>';
+  });
+}
+async function showHomeReport(id) {
+  const d = await api('/api/reports/'+id);
+  const v = $('rep-view');
+  v.innerHTML = md(d.master_md); v.style.display = 'block';
+}
+
+loadSessions(); loadHome();
+const _origShowEmpty = showEmpty;
+showEmpty = function() { _origShowEmpty(); loadHome(); };
 /* 알림 링크로 진입한 경우 재질문 세션 자동 시작 */
 const _cardParam = new URLSearchParams(location.search).get('card');
 if (_cardParam) { history.replaceState({}, '', '/'); startRequestion(_cardParam); }

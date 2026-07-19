@@ -91,6 +91,21 @@ def test_snapshot_axis_failure_isolated(tmp_path, monkeypatch):
     conn.close()
 
 
+def test_index_quotes(tmp_path, monkeypatch):
+    monkeypatch.setattr("aim.data.kis.market.time.sleep", lambda s: None)
+    conn = db.connect(tmp_path / "t.db")
+    db.migrate(conn)
+
+    def fake_get(url, headers, params):
+        assert "inquire-index-price" in url and headers["tr_id"] == "FHPUP02100000"
+        value = {"0001": ("6820.60", "-6.37"), "1001": ("791.84", "-4.53")}[params["FID_INPUT_ISCD"]]
+        return {"rt_cd": "0", "output": {"bstp_nmix_prpr": value[0], "bstp_nmix_prdy_ctrt": value[1]}}
+
+    quotes = KISMarketProvider(conn, FakeAuth(), get_fn=fake_get).index_quotes()
+    assert quotes == [("KOSPI", 6820.60, -6.37), ("KOSDAQ", 791.84, -4.53)]
+    conn.close()
+
+
 def test_diagnose_with_fake_llm(tmp_path):
     from aim.brain.diagnose import diagnose_portfolio
     from aim.storage.repositories.portfolio import PortfolioRepository
