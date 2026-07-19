@@ -156,6 +156,29 @@ def test_review_quiet_when_nothing_changed(conn):
     assert review_cards(conn, FakeSettings(), quick=None, router=None) == []
 
 
+# ── 카드 갤러리 (웹 사이드바 "내 카드") ───────────────────────
+
+def test_cards_list_shows_active_only(conn):
+    from aim.web.app import socra_cards_list
+
+    card_id = _make_card(conn)
+    rows = socra_cards_list(conn)
+    assert len(rows) == 1
+    assert rows[0]["card_id"] == card_id and rows[0]["session_id"]
+    assert rows[0]["target_price"] == 300000
+
+
+def test_session_detail_recomputes_legend(conn):
+    """세션을 다시 열어도 봇 턴의 범례가 사라지지 않는다."""
+    from aim.web.app import socra_session_detail
+
+    engine = SocraEngine(conn, FakeSettings(), FakeLLM(["PER이 38배예요. 어떠세요?"]), FakeLLM())
+    sid = engine.start_session("삼성전자")["session_id"]
+    detail = socra_session_detail(conn, sid)
+    bot_turn = next(t for t in detail["turns"] if t["role"] == "bot")
+    assert any(l["slug"] == "per" for l in bot_turn["legend"])
+
+
 # ── 재질문 세션 → 카드 v2 ─────────────────────────────────────
 
 def test_requestion_flow_creates_card_v2(conn):

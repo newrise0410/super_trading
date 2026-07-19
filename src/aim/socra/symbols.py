@@ -27,6 +27,39 @@ def _normalize(name: str) -> str:
     return re.sub(r"\s+", "", name).lower()
 
 
+# 은어·줄임말 → 정식 종목명(정규화형). 초보의 실제 입력 습관 반영.
+SLANG_ALIASES = {
+    "삼전": "삼성전자", "하닉": "sk하이닉스", "엔솔": "lg에너지솔루션",
+    "현차": "현대차", "셀트": "셀트리온", "삼바": "삼성바이오로직스",
+    "카뱅": "카카오뱅크", "포홀": "포스코홀딩스", "두산에너": "두산에너빌리티",
+    "한화에어로": "한화에어로스페이스", "네이버": "naver",
+}
+
+
+def _bigrams(s: str) -> set[str]:
+    return {s[i:i + 2] for i in range(len(s) - 1)}
+
+
+def suggest_symbols(conn: sqlite3.Connection, text: str, limit: int = 4) -> list[tuple[str, str]]:
+    """검색 실패 시 유사 종목 후보 — 오타("삼송전자")·부분 기억 대응.
+
+    문자 2그램 겹침 + 글자 커버리지로 스코어. 확신 없는 후보는 안 내는 게 낫다.
+    """
+    norm = _normalize(text)
+    if len(norm) < 2:
+        return []
+    grams, chars = _bigrams(norm), set(norm)
+    scored: list[tuple[int, float, str, str]] = []
+    for r in conn.execute("SELECT symbol, name, name_norm FROM symbols WHERE length(name_norm) >= 2"):
+        nn = r["name_norm"]
+        b_overlap = len(grams & _bigrams(nn))
+        c_cover = len(chars & set(nn)) / len(set(nn))
+        if b_overlap >= 1 and c_cover >= 0.6:
+            scored.append((b_overlap, c_cover, r["symbol"], r["name"]))
+    scored.sort(key=lambda t: (-t[0], -t[1]))
+    return [(t[2], t[3]) for t in scored[:limit]]
+
+
 def parse_mst(raw: bytes, tail_len: int) -> list[tuple[str, str]]:
     """mst 본문 → [(단축코드, 한글명)]. 6자리 표준 종목코드만."""
     rows: list[tuple[str, str]] = []

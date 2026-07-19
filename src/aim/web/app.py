@@ -116,16 +116,30 @@ def socra_sessions_list(conn: sqlite3.Connection, user_id: str = "local") -> lis
     )]
 
 
+def socra_cards_list(conn: sqlite3.Connection, user_id: str = "local") -> list[dict]:
+    """활성 결정 카드 모아보기 — 카드는 이 제품의 결과물, 갤러리가 필요하다."""
+    return [dict(r) for r in conn.execute(
+        "SELECT card_id, session_id, symbol, name, version, target_price, stop_price, created_at"
+        " FROM decision_cards WHERE user_id = ? AND status = 'active'"
+        " ORDER BY created_at DESC LIMIT 50", (user_id,),
+    )]
+
+
 def socra_session_detail(conn: sqlite3.Connection, session_id: str) -> dict | None:
     session = conn.execute(
         "SELECT * FROM socra_sessions WHERE session_id = ?", (session_id,)
     ).fetchone()
     if session is None:
         return None
+    from aim.socra.concepts import detect_terms  # noqa: PLC0415
+
     turns = [dict(r) for r in conn.execute(
         "SELECT role, content, stage, created_at FROM socra_turns"
         " WHERE session_id = ? ORDER BY id", (session_id,),
     )]
+    for t in turns:  # 세션 다시 열어도 범례가 사라지지 않게 재계산
+        if t["role"] == "bot":
+            t["legend"] = detect_terms(conn, t["content"])
     card = conn.execute(
         "SELECT * FROM decision_cards WHERE session_id = ? ORDER BY id DESC LIMIT 1",
         (session_id,),
@@ -201,6 +215,19 @@ def create_app(settings: Settings):
             return socra_sessions_list(conn)
         finally:
             conn.close()
+
+    @app.get("/api/socra/cards")
+    def cards_list():
+        conn = _conn()
+        try:
+            return socra_cards_list(conn)
+        finally:
+            conn.close()
+
+    @app.get("/api/notify/status")
+    def notify_status():
+        """알림 채널 연결 여부 — '알려드릴게요' 약속이 빈 약속이 되지 않게 UI에 노출."""
+        return {"configured": bool(settings.discord_webhooks)}
 
     @app.get("/api/socra/sessions/{session_id}")
     def session_detail(session_id: str):
@@ -315,6 +342,24 @@ def create_app(settings: Settings):
             return signals_data(conn)
         finally:
             conn.close()
+
+    # 첫 화면 증시 캐시 예열 — 첫 방문자가 6초짜리 "불러오는 중"을 보지 않게
+    if settings.kis_app_key:
+        import threading  # noqa: PLC0415
+        import time as time_mod  # noqa: PLC0415
+
+        def _warm_market() -> None:
+            try:
+                conn = _conn()
+                try:
+                    data = market_summary(settings, conn)
+                finally:
+                    conn.close()
+                _mkt_cache.update(at=time_mod.time(), data=data)
+            except Exception:  # noqa: BLE001
+                pass
+
+        threading.Thread(target=_warm_market, daemon=True).start()
 
     return app
 

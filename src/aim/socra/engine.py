@@ -50,6 +50,14 @@ def _is_defer(text: str) -> bool:
     """판단 보류 — 카드 없이 끝내는 것도 정상적인 1급 결론이다."""
     stripped = text.strip()
     return any(word in stripped for word in ("보류", "나중에", "판단 안", "결정 안", "확정 못", "확정못"))
+
+
+def _is_skip(text: str) -> bool:
+    """단계 건너뛰기 의도 — 짧은 명시적 요청만 (긴 답변 속 '넘어가면' 오탐 방지)."""
+    stripped = text.strip()
+    return len(stripped) <= 20 and any(
+        word in stripped for word in ("건너뛰", "건너뛸", "스킵", "다음 단계로", "다음단계로", "패스")
+    )
 MIN_TURNS_PER_STAGE = 1   # LLM이 [[NEXT]] 신호를 줘도 최소 1답은 필요
 MAX_TURNS_PER_STAGE = 4   # 신호가 없어도 강제 전진 (세션 늘어짐 방지)
 _NEXT_MARKER_RE = re.compile(r"\s*\[\[NEXT\]\]\s*$")
@@ -74,8 +82,14 @@ def resolve_symbol(query: str, conn: "sqlite3.Connection | None" = None) -> tupl
     """자유 입력("삼성전자 살까?", "005930") → (종목코드, 표시명). 실패 시 None.
 
     우선순위: 6자리 코드 → 종목 마스터 DB(symbols, `aim symbols-sync`) → 인기종목 맵 폴백.
+    은어("삼전")는 정식명으로 확장해 기존 경로에 태운다.
     """
+    from aim.socra.symbols import SLANG_ALIASES  # noqa: PLC0415
+
     text = query.strip().lower()
+    for slang, canonical in SLANG_ALIASES.items():
+        if slang in text:
+            text += " " + canonical
     m = re.search(r"\b(\d{6})\b", text)
     if m:
         return m.group(1), m.group(1)
@@ -109,7 +123,24 @@ class SocraEngine:
     def start_session(self, query: str, user_id: str = "local") -> dict[str, Any]:
         resolved = resolve_symbol(query, self._conn)
         if resolved is None:
-            return {"error": "종목을 찾지 못했어요. 종목코드 6자리(예: 005930) 또는 종목명으로 입력해 주세요."}
+            # 초보 서비스가 종목코드를 요구하면 페르소나 모순 — 후보 제시 + 따뜻한 안내
+            candidates: list[tuple[str, str]] = []
+            try:
+                from aim.socra.symbols import suggest_symbols  # noqa: PLC0415
+
+                candidates = suggest_symbols(self._conn, query)
+            except Exception:  # noqa: BLE001
+                logger.exception("symbol suggestion failed")
+            if candidates:
+                msg = "혹시 아래 종목을 말씀하신 걸까요? 골라주시거나, 회사 이름으로 다시 알려주세요. 😊"
+            else:
+                msg = (
+                    "아직 어떤 종목인지 못 찾았어요. 😅 궁금한 **회사 이름**을 알려주시면 바로 시작할게요.\n"
+                    "(예: \"삼성전자 살까 말까?\", \"카카오 물타기 해야 하나?\")\n"
+                    "아직 정한 종목이 없다면, 요즘 광고나 뉴스에서 들어본 회사 이름 하나로 가볍게 시작해도 좋아요."
+                )
+            return {"error": msg,
+                    "candidates": [{"symbol": s, "name": n} for s, n in candidates]}
         symbol, _ = resolved
 
         evidence_md, name, _snapshot = self._collect_evidence(symbol)
@@ -158,6 +189,31 @@ class SocraEngine:
             return self._handle_card_stage(session, text)
         if session["stage"] == "done":
             return self._reply(session, "이 세션은 완료됐어요. 사이드바에서 새 대화를 시작해 보세요! 🎉")
+
+        # 건너뛰기 — 막힌 사용자에게 탈출구 (빈 부분은 카드 gaps에 남는다)
+        if _is_skip(text):
+            ack = "알겠어요, 이 부분은 건너뛸게요. 나중에 카드에서 빈 부분으로 표시해 둘게요. 😊"
+            if session["kind"] == "recheck" or session["stage"] == STAGES[-1]:
+                return self._enter_card_stage(session, ack)
+            skipped_to = STAGES[STAGES.index(session["stage"]) + 1]
+            self._set_stage(session_id, skipped_to)
+            raw = self._quick.complete(
+                prompts.TURN_TEMPLATE.format(
+                    base=prompts.BASE_GUARD, stage_goal=prompts.STAGE_GOALS[skipped_to],
+                    mastery=mastery.summary_text(),
+                    name=session["name"], symbol=session["symbol"],
+                    evidence=session["evidence_md"],
+                    history=self._history_text(session_id),
+                    user_text="(사용자가 이전 단계를 건너뛰기로 했다 — 새 단계의 첫 질문을 하나만 던져라)",
+                ),
+                text,
+            )
+            reply = ack + "\n\n" + _clean_reply(_NEXT_MARKER_RE.sub("", raw))
+            self._save_turn(session_id, "bot", reply, skipped_to)
+            return {
+                "reply": reply, "legend": self._legend(reply, session["user_id"]),
+                "stage": skipped_to, "stage_label": STAGE_LABEL[skipped_to],
+            }
 
         # 일반 단계: 소크라테스 턴 (지식 상태 주입 — 난이도 적응)
         stage_goal = prompts.STAGE_GOALS[session["stage"]]

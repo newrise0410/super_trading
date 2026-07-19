@@ -47,7 +47,10 @@
   .sess.active { background: var(--surface); color: var(--ink); font-weight: 600;
                  box-shadow: 0 1px 3px rgba(0,0,0,.06); }
   .sess .st { font-size: 11px; color: var(--accent); white-space: nowrap; }
-  .side-foot { font-size: 11.5px; color: var(--muted); padding: 0 8px; }
+  .sess .st em { font-style: normal; color: var(--muted); font-size: 10.5px; margin-left: 4px; }
+  .side-h { font-size: 11px; color: var(--muted); text-transform: uppercase;
+            letter-spacing: .5px; padding: 4px 8px 2px; }
+  .side-foot { font-size: 11px; color: var(--muted); padding: 0 8px; line-height: 1.5; }
   .side-foot a { color: var(--muted); }
 
   /* ── 메인 채팅 ── */
@@ -77,8 +80,12 @@
   .legend div { margin: 2px 0; }
   .legend b { color: var(--accent2); font-weight: 700; }
   .typing { color: var(--muted); font-size: 14px; }
-  .typing::after { content: '●●●'; animation: blink 1.2s infinite; letter-spacing: 3px; }
+  .typing::after { content: ' ●●●'; animation: blink 1.2s infinite; letter-spacing: 3px; }
   @keyframes blink { 50% { opacity: .25; } }
+  .typing .sec { font-size: 12px; opacity: .75; }
+  .stage-div { text-align: center; color: var(--accent2); font-size: 12px; font-weight: 700;
+               letter-spacing: .4px; margin: 18px 0; }
+  .stage-div::before, .stage-div::after { content: '—'; color: var(--border); margin: 0 8px; }
 
   /* 빈 상태 (첫 화면) */
   #empty { flex: 1; display: flex; flex-direction: column; justify-content: center;
@@ -102,7 +109,9 @@
   .mkt .t .n { font-size: 11.5px; color: var(--muted); }
   .mkt .t .v { font-size: 16px; font-weight: 750; font-variant-numeric: tabular-nums; }
   .mkt .t .c { font-size: 12px; font-variant-numeric: tabular-nums; }
-  .up { color: var(--good); } .down { color: #E5484D; }
+  /* 한국 증시 관례: 상승=빨강, 하락=파랑 (네이버증권·토스와 동일) */
+  .up { color: #E5484D; } .down { color: #2E6FF2; }
+  @media (prefers-color-scheme: dark) { .up { color: #FF7A7F; } .down { color: #6E9BFF; } }
   .rep-row { display: flex; gap: 10px; align-items: center; padding: 7px 10px;
              border-radius: 8px; cursor: pointer; font-size: 13.5px; color: var(--ink2); }
   .rep-row:hover { background: var(--surface); }
@@ -116,7 +125,12 @@
   #rep-view b { color: var(--accent-ink); }
 
   /* 입력창 */
-  #inputbar { padding: 12px 0 22px; }
+  #inputbar { padding: 12px 0 14px; }
+  #quick-chips { display: none; gap: 8px; margin-bottom: 8px; }
+  .qchip { border: 1.5px solid var(--border); background: var(--surface); border-radius: 99px;
+           padding: 5px 12px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+  .qchip:hover { border-color: var(--accent2); color: var(--accent2); }
+  .disc-foot { text-align: center; font-size: 11px; color: var(--muted); margin-top: 10px; }
   .inputbox { display: flex; gap: 10px; background: var(--surface);
               border: 1.5px solid var(--border); border-radius: 16px; padding: 10px 12px;
               box-shadow: 0 4px 20px rgba(0,0,0,.05); }
@@ -148,6 +162,7 @@
   #confirm { width: 100%; margin-top: 12px; background: var(--good); color: #fff; border: 0;
              border-radius: 10px; padding: 11px; font-weight: 700; font-size: 14px; cursor: pointer; }
   .saved { text-align: center; color: var(--good); font-weight: 700; margin-top: 12px; }
+  .saved.warn { color: var(--accent-ink); font-size: 12.5px; font-weight: 600; line-height: 1.5; }
   #panel-btn { width: 100%; margin-top: 10px; background: var(--accent2); color: #fff; border: 0;
                border-radius: 10px; padding: 10px; font-weight: 700; font-size: 13.5px; cursor: pointer; }
   #defer { width: 100%; margin-top: 8px; background: transparent; color: var(--ink2);
@@ -166,8 +181,31 @@
   .pv .disc { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
   .empty-card { color: var(--muted); font-size: 13px; line-height: 1.7; padding: 8px 2px; }
 
-  @media (max-width: 1080px) { #app { grid-template-columns: 220px 1fr; } #cardpane { display: none; } }
-  @media (max-width: 720px)  { #app { grid-template-columns: 1fr; } #side { display: none; } }
+  /* 모바일 — 핵심(카드·사이드바)을 숨기지 않고 서랍으로. 알림 링크가 폰으로 열리는 서비스다 */
+  #side-toggle, #card-toggle { display: none; position: fixed; z-index: 60; width: 42px; height: 42px;
+    border: 1.5px solid var(--border); background: var(--surface); color: var(--ink);
+    border-radius: 12px; font-size: 18px; cursor: pointer; box-shadow: 0 2px 12px rgba(0,0,0,.14); }
+  #side-toggle { top: 12px; left: 12px; }
+  #card-toggle { bottom: 96px; right: 12px; }
+  #card-toggle.has { background: var(--accent); border-color: var(--accent); }
+  #backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 25; }
+  @media (max-width: 1080px) {
+    #app { grid-template-columns: 220px 1fr; }
+    #cardpane { display: none; position: fixed; right: 0; top: 0; bottom: 0;
+                width: min(360px, 92vw); z-index: 30; box-shadow: -8px 0 30px rgba(0,0,0,.2); }
+    #app.card-open #cardpane { display: block; }
+    #app.card-open ~ #backdrop { display: block; }
+    #card-toggle { display: block; }
+  }
+  @media (max-width: 720px) {
+    #app { grid-template-columns: 1fr; }
+    #side { display: none; position: fixed; left: 0; top: 0; bottom: 0;
+            width: min(280px, 85vw); z-index: 40; box-shadow: 8px 0 30px rgba(0,0,0,.2); }
+    #app.side-open #side { display: flex; }
+    #app.side-open ~ #backdrop { display: block; }
+    #side-toggle { display: block; }
+    #stagebar { padding-left: 60px; padding-right: 60px; flex-wrap: wrap; }
+  }
 </style>
 </head>
 <body>
@@ -175,8 +213,16 @@
   <aside id="side">
     <div class="logo">🏛️ 소크라<em>.</em><span class="sub">질문으로 배우는 투자</span></div>
     <button id="new-btn" onclick="showEmpty()">＋ 새 고민</button>
+    <div id="cards-sec" style="display:none">
+      <div class="side-h">📌 내 카드</div>
+      <div id="card-list"></div>
+    </div>
+    <div class="side-h">대화</div>
     <div id="sess-list"></div>
-    <div class="side-foot"><a href="/dashboard">대시보드 →</a></div>
+    <div class="side-foot">
+      소크라는 교육 도구예요 — 투자 판단과 책임은 본인에게 있습니다.<br>
+      <a href="/dashboard">대시보드 →</a>
+    </div>
   </aside>
 
   <main id="main">
@@ -184,6 +230,9 @@
       <h1>어떤 주식이 <em>고민</em>이세요?</h1>
       <p>정답을 드리지 않아요. 대신 좋은 질문을 드릴게요 —<br>
          대화가 끝나면 <b>당신만의 판단 기준</b>이 카드로 남습니다.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:-8px">
+        ① 사업 → ② 가치 → ③ 리스크 → ④ 출구, 보통 10~15분 대화예요.
+        중간에 나가도 사이드바에서 언제든 이어집니다.</p>
       <div class="col" style="width:100%;max-width:560px">
         <div class="inputbox">
           <textarea id="input0" rows="1" placeholder="예: 삼성전자 살까 말까?  ·  005930"></textarea>
@@ -209,10 +258,15 @@
     <div id="stagebar"></div>
     <div id="chat" style="display:none"><div class="col" id="msgs"></div></div>
     <div id="inputbar" style="display:none"><div class="col">
+      <div id="quick-chips">
+        <span class="qchip" onclick="quickSend('힌트 주세요')">💡 힌트 주세요</span>
+        <span class="qchip" onclick="quickSend('이 단계는 건너뛸게요')">⏭️ 이 단계 건너뛰기</span>
+      </div>
       <div class="inputbox">
         <textarea id="input" rows="1" placeholder="생각을 편하게 적어주세요 — 모르면 '몰라요'도 좋은 답이에요"></textarea>
         <button id="send" onclick="send()">↑</button>
       </div>
+      <div class="disc-foot">소크라는 교육 도구이며 매수·매도 권유를 하지 않아요 — 판단과 책임은 본인에게 있습니다.</div>
     </div></div>
   </main>
 
@@ -224,32 +278,60 @@
     </div></div>
   </aside>
 </div>
+<div id="backdrop" onclick="closeDrawers()"></div>
+<button id="side-toggle" onclick="toggleDrawer('side-open')">☰</button>
+<button id="card-toggle" onclick="toggleDrawer('card-open')">📌</button>
 
 <script>
 const $ = id => document.getElementById(id);
-let SID = null, BUSY = false, SESS_KIND = 'journey';
+let SID = null, BUSY = false, SESS_KIND = 'journey', CUR_STAGE = null, NOTIFY_OK = true;
 const STAGES = [["business","① 사업"],["valuation","② 가치"],["risk","③ 리스크"],["exit","④ 출구"],["card","카드"]];
 const STAGES_RECHECK = [["recheck","🔄 재점검"],["card","카드"]];
 
+/* api()는 절대 throw하지 않는다 — 오류는 {error} 로 돌아와 UI가 잠기지 않는다 */
 async function api(url, body) {
-  const r = await fetch(url, body ? {method:'POST', headers:{'Content-Type':'application/json'},
-                                     body: JSON.stringify(body)} : undefined);
-  return r.json();
+  try {
+    const r = await fetch(url, body ? {method:'POST', headers:{'Content-Type':'application/json'},
+                                       body: JSON.stringify(body)} : undefined);
+    let d = {};
+    try { d = await r.json(); } catch {}
+    if (!r.ok) return {...d, error: d.error || d.detail ||
+                       `서버에 문제가 있어요 (${r.status}) — 잠시 후 다시 시도해 주세요`};
+    return d;
+  } catch {
+    return {error: '연결이 불안정해요 — 대화 내용은 저장돼 있으니, 잠시 후 다시 보내주세요'};
+  }
 }
 
-/* ── 세션 목록 ── */
+/* 모바일 서랍 */
+function toggleDrawer(cls) { $('app').classList.toggle(cls); }
+function closeDrawers() { $('app').classList.remove('side-open', 'card-open'); }
+
+/* ── 세션·카드 목록 ── */
 async function loadSessions() {
   const rows = await api('/api/socra/sessions');
+  if (rows.error || !Array.isArray(rows)) return;
   $('sess-list').innerHTML = rows.map(s =>
     `<div class="sess ${s.session_id===SID?'active':''}" onclick="openSession('${s.session_id}')">
-       <span>${s.name}</span><span class="st">${stageLabel(s.stage)}</span></div>`).join('');
+       <span>${esc(s.name)}</span>
+       <span class="st">${stageLabel(s.stage)}<em>${(s.updated_at||'').slice(5,10)}</em></span></div>`).join('');
+}
+async function loadCards() {
+  const rows = await api('/api/socra/cards');
+  if (rows.error || !Array.isArray(rows) || !rows.length) { $('cards-sec').style.display='none'; return; }
+  $('cards-sec').style.display = 'block';
+  $('card-list').innerHTML = rows.map(c =>
+    `<div class="sess" onclick="openSession('${c.session_id}')">
+       <span>${esc(c.name)}</span><span class="st">v${c.version}</span></div>`).join('');
 }
 function stageLabel(st) { return ({business:'①',valuation:'②',risk:'③',exit:'④',card:'카드',done:'✓',recheck:'🔄'})[st]||st; }
 
 /* ── 화면 전환 ── */
-function showEmpty() { SID=null; $('empty').style.display='flex'; $('chat').style.display='none';
+function showEmpty() { SID=null; CUR_STAGE=null; closeDrawers();
+  $('empty').style.display='flex'; $('chat').style.display='none';
   $('inputbar').style.display='none'; $('stagebar').style.display='none'; loadSessions(); resetCard(); }
-function showChat() { $('empty').style.display='none'; $('chat').style.display='block';
+function showChat() { $('app').classList.remove('side-open');
+  $('empty').style.display='none'; $('chat').style.display='block';
   $('inputbar').style.display='block'; $('stagebar').style.display='flex'; }
 
 function renderStagebar(stage) {
@@ -266,12 +348,25 @@ function addUser(text) {
   $('msgs').lastElementChild.querySelector('.txt').textContent = text;
   scrollDown();
 }
+/* 대기 표시 — 무엇을 하는지·얼마나 걸리는지 보여준다 (30초 침묵 = 고장 오해) */
+const WAIT_MSGS = ['🔎 증거를 살펴보는 중', '🤔 좋은 질문을 고르는 중', '✍️ 생각을 정리하는 중'];
+let waitTimer = null;
 function addTyping() {
-  $('msgs').insertAdjacentHTML('beforeend', `<div class="msg bot" id="tp"><div class="typing"></div></div>`);
+  $('msgs').insertAdjacentHTML('beforeend',
+    `<div class="msg bot" id="tp"><div class="typing"><span id="tp-msg">${WAIT_MSGS[0]}</span> <span class="sec" id="tp-sec"></span></div></div>`);
+  const t0 = Date.now(); let i = 0;
+  clearInterval(waitTimer);
+  waitTimer = setInterval(() => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    if (s > 0 && s % 8 === 0) i = (i + 1) % WAIT_MSGS.length;
+    const m = $('tp-msg'), c = $('tp-sec');
+    if (m) m.textContent = WAIT_MSGS[i];
+    if (c && s >= 6) c.textContent = `${s}초 — 보통 10~30초 걸려요`;
+  }, 1000);
   scrollDown();
 }
 /* 경량 마크다운 → HTML (봇 응답 전용, 이스케이프 후 안전 변환) */
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function md(s) {
   s = s.replace(/\s*\[[a-z][a-z0-9_]*\.[a-z0-9_]+\]/g, '');   /* 내부 증거키 방어적 제거 */
   s = esc(s);
@@ -285,6 +380,7 @@ function md(s) {
 }
 
 function addBot(text, legend, instant) {
+  clearInterval(waitTimer); waitTimer = null;
   const tp = $('tp'); if (tp) tp.remove();
   $('msgs').insertAdjacentHTML('beforeend', `<div class="msg bot"><div class="txt"></div></div>`);
   const el = $('msgs').lastElementChild.querySelector('.txt');
@@ -304,58 +400,115 @@ function scrollDown() { $('chat').scrollTop = $('chat').scrollHeight; }
 
 /* ── 세션 생성/열기/전송 ── */
 function startWith(q) { $('input0').value = q; createFromEmpty(); }
-async function createFromEmpty() {
-  const q = $('input0').value.trim(); if (!q || BUSY) return;
+function resetH(id) { const el = $(id); el.style.height = 'auto'; }
+
+/* 종목 인식 실패 후에도 입력이 계속 동작한다 — 데드엔드 금지 */
+async function createSession(q, fresh) {
+  if (BUSY) return;
   BUSY = true; $('send0').disabled = true; SESS_KIND = 'journey';
-  showChat(); $('msgs').innerHTML=''; resetCard(); addUser(q); addTyping();
-  const d = await api('/api/socra/sessions', {query: q});
-  BUSY = false; $('send0').disabled = false; $('input0').value='';
-  if (d.error) { addBot(d.error, [], true); return; }
-  SID = d.session_id; SESS_SYMBOL = d.symbol; renderStagebar(d.stage); addBot(d.reply, d.legend);
+  showChat();
+  if (fresh) { $('msgs').innerHTML = ''; resetCard(); }
+  addUser(q); addTyping();
+  let d;
+  try { d = await api('/api/socra/sessions', {query: q}); }
+  finally { BUSY = false; $('send0').disabled = false; }
+  if (d.error) { addBot(d.error, [], true); renderCandidates(d.candidates); $('input').focus(); return; }
+  SID = d.session_id; SESS_SYMBOL = d.symbol; CUR_STAGE = d.stage;
+  renderStagebar(d.stage); updateChips(d.stage); addBot(d.reply, d.legend);
   loadSessions(); $('input').focus();
 }
+function createFromEmpty() {
+  const q = $('input0').value.trim(); if (!q || BUSY) return;
+  $('input0').value = ''; resetH('input0');
+  createSession(q, true);
+}
+function renderCandidates(list) {
+  if (!list || !list.length) return;
+  $('msgs').insertAdjacentHTML('beforeend',
+    `<div class="msg bot"><div class="chips" style="justify-content:flex-start">${
+      list.map(c => `<span class="chip" data-q="${esc(c.name)} 살까 말까?"
+        onclick="createSession(this.dataset.q)">${esc(c.name)}</span>`).join('')}</div></div>`);
+  scrollDown();
+}
 
-/* 근거 변화 알림 링크(?card=...) → 재질문 세션 (§4.5) */
+/* 근거 변화 알림 링크(?card=...) — 확인 후 재질문 세션 (링크 두 번 클릭 = 중복 세션 방지) */
+function showRequestionGate(cardId) {
+  showChat(); $('msgs').innerHTML = ''; resetCard(); $('stagebar').style.display = 'none';
+  $('msgs').insertAdjacentHTML('beforeend',
+    `<div class="msg bot"><div class="txt">근거 변화 알림으로 오셨네요. 그때 세운 카드와
+     지금 무엇이 달라졌는지 보여드리고, 기준을 다시 세울 수 있게 도와드릴게요.</div>
+     <div class="chips" style="justify-content:flex-start;margin-top:10px">
+       <span class="chip" data-c="${esc(cardId)}" onclick="startRequestion(this.dataset.c)">🔄 재점검 시작하기</span>
+     </div></div>`);
+}
 async function startRequestion(cardId) {
   if (BUSY) return;
   BUSY = true; SESS_KIND = 'recheck';
-  showChat(); $('msgs').innerHTML=''; resetCard(); addTyping();
-  const d = await api('/api/socra/requestion', {card_id: cardId});
-  BUSY = false;
+  showChat(); $('msgs').innerHTML = ''; resetCard(); addTyping();
+  let d;
+  try { d = await api('/api/socra/requestion', {card_id: cardId}); }
+  finally { BUSY = false; }
   if (d.error) { addBot(d.error, [], true); return; }
-  SID = d.session_id; SESS_SYMBOL = d.symbol; renderStagebar(d.stage); addBot(d.reply, d.legend);
+  SID = d.session_id; SESS_SYMBOL = d.symbol; CUR_STAGE = d.stage;
+  renderStagebar(d.stage); updateChips(d.stage); addBot(d.reply, d.legend);
   loadSessions(); $('input').focus();
 }
 async function openSession(id) {
-  SID = id; showChat(); resetCard();
+  SID = id; showChat(); resetCard(); closeDrawers();
   const d = await api('/api/socra/sessions/'+id);
+  if (d.error) { addBot(d.error, [], true); return; }
   SESS_KIND = d.session.kind || 'journey';
   SESS_SYMBOL = d.session.symbol;
-  renderStagebar(d.session.stage);
+  CUR_STAGE = d.session.stage;
+  renderStagebar(d.session.stage); updateChips(d.session.stage);
   $('msgs').innerHTML = '';
   for (const t of d.turns) {
-    if (t.role === 'user') addUser(t.content); else addBot(t.content, [], true);
+    if (t.role === 'user') addUser(t.content); else addBot(t.content, t.legend || [], true);
   }
   if (d.card) renderCard(JSON.parse(JSON.stringify(d.card)), true, d.session);
   else if (d.card_draft) renderCard(d.card_draft, false, d.session);
   loadSessions(); scrollDown();
 }
+function stageDivider(label) {
+  if (label) $('msgs').insertAdjacentHTML('beforeend', `<div class="stage-div">${esc(label)}</div>`);
+}
+function updateChips(stage) {
+  const show = ['business','valuation','risk','exit','recheck'].includes(stage);
+  $('quick-chips').style.display = show ? 'flex' : 'none';
+}
+function quickSend(t) { if (BUSY || !SID) return; $('input').value = t; send(); }
 async function send() {
-  const text = $('input').value.trim(); if (!text || BUSY || !SID) return;
-  BUSY = true; $('send').disabled = true; $('input').value = '';
+  const text = $('input').value.trim(); if (!text || BUSY) return;
+  if (!SID) { $('input').value = ''; resetH('input'); createSession(text); return; }
+  BUSY = true; $('send').disabled = true; $('input').value = ''; resetH('input');
   addUser(text); addTyping();
-  const d = await api(`/api/socra/sessions/${SID}/messages`, {text});
-  BUSY = false; $('send').disabled = false;
-  if (d.error) { addBot(d.error, [], true); return; }
-  renderStagebar(d.stage); addBot(d.reply, d.legend);
+  let d;
+  try { d = await api(`/api/socra/sessions/${SID}/messages`, {text}); }
+  finally { BUSY = false; $('send').disabled = false; }
+  if (d.error) {
+    addBot(d.error, [], true);
+    $('input').value = text; resetH('input');   /* 실패한 답변 복원 — 다시 쓰게 하지 않는다 */
+    return;
+  }
+  if (d.stage && d.stage !== CUR_STAGE && d.stage !== 'done') stageDivider(d.stage_label);
+  CUR_STAGE = d.stage;
+  renderStagebar(d.stage); updateChips(d.stage); addBot(d.reply, d.legend);
   if (d.card_draft) { const s = await api('/api/socra/sessions/'+SID); renderCard(d.card_draft, false, s.session); }
-  if (d.card_id) markSaved();
+  if (d.card_id) { markSaved(); loadCards(); }
   loadSessions(); $('input').focus();
 }
 
 /* ── 결정 카드 패널 ── */
-function resetCard() { $('card-body').innerHTML =
+function resetCard() {
+  $('card-toggle').classList.remove('has');
+  $('card-body').innerHTML =
   `<div class="empty-card">대화가 진행되면 여기에 <b>당신이 직접 세운</b> 논지·목표가·손절 기준이 채워집니다.<br><br>소크라는 서기일 뿐 — 결론은 언제나 당신의 것이에요.</div>`; }
+function savedLine() {
+  return NOTIFY_OK
+    ? `<div class="saved">✓ 감시 시작 — 근거가 변하면 알려드려요</div>`
+    : `<div class="saved warn">✓ 감시 시작 — ⚠ 알림 채널(디스코드)이 아직 연결 안 돼,
+       변화는 이 화면에서 직접 확인해 주세요</div>`;
+}
 function field(k, val, why, num) {
   const v = (val===null||val===undefined||val==='')
     ? `<div class="pending">아직 대화에서 안 나왔어요</div>`
@@ -375,12 +528,13 @@ function renderCard(c, saved, sess) {
     ${field('재검토 조건', recheck.length ? recheck.map(r=>'· '+r).join('\n') : null)}
     ${field('나의 확신도', c.confidence_self!=null ? c.confidence_self+'%' : null)}
     ${(c.gaps&&c.gaps.length)?`<div class="gaps">✍️ 미완성: ${c.gaps.join(' / ')}</div>`:''}
-    ${saved?`<div class="saved">✓ 감시 시작 — 근거가 변하면 알려드려요</div>
+    ${saved?`${savedLine()}
              <button id="panel-btn" onclick="loadPanel()">🏛️ 대가들은 어떻게 볼까?</button>
              <div id="panel-view" class="pv"></div>`
            :`<button id="confirm" onclick="confirmCard()">이대로 확정하기</button>
              <button id="defer" onclick="deferCard()">🤔 보류하기 — 더 알아보고 결정</button>`}
   </div>`;
+  $('card-toggle').classList.add('has');   /* 모바일: 카드가 생겼음을 토글 버튼으로 알림 */
 }
 function deferCard() { $('input').value = '보류'; send(); }
 
@@ -390,7 +544,7 @@ async function loadPanel() {
   if (!SESS_SYMBOL) return;
   const btn = $('panel-btn'); btn.disabled = true; btn.textContent = '6인의 관점을 모으는 중… (수십 초)';
   const d = await api('/api/panel', {symbol: SESS_SYMBOL});
-  if (d.error) { btn.textContent = d.error; return; }
+  if (d.error) { btn.disabled = false; btn.textContent = '🏛️ 대가들은 어떻게 볼까? (다시 시도)'; return; }
   btn.style.display = 'none';
   const c = d.consensus;
   $('panel-view').innerHTML =
@@ -405,11 +559,15 @@ async function loadPanel() {
     + `<div class="disc">${esc(d.disclaimer)}</div>`;
 }
 function confirmCard() { $('input').value = '확정'; send(); }
-function markSaved() { const b = $('confirm'); if (b) b.outerHTML = `<div class="saved">✓ 감시 시작 — 근거가 변하면 알려드려요</div>`; }
+function markSaved() {
+  const d = $('defer'); if (d) d.remove();
+  const b = $('confirm'); if (b) b.outerHTML = savedLine();
+}
 
-/* 입력 UX */
+/* 입력 UX — isComposing: 한글 조합 중 Enter로 미완성 문장이 전송되는 것 방지 */
 for (const [inp, btn] of [['input','send'],['input0','send0']]) {
   $(inp).addEventListener('keydown', e => {
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $(btn).click(); }
   });
   $(inp).addEventListener('input', e => {
@@ -448,12 +606,13 @@ async function showHomeReport(id) {
   v.innerHTML = md(d.master_md); v.style.display = 'block';
 }
 
-loadSessions(); loadHome();
+loadSessions(); loadCards(); loadHome();
+api('/api/notify/status').then(d => { NOTIFY_OK = !!d.configured; });
 const _origShowEmpty = showEmpty;
-showEmpty = function() { _origShowEmpty(); loadHome(); };
-/* 알림 링크로 진입한 경우 재질문 세션 자동 시작 */
+showEmpty = function() { _origShowEmpty(); loadHome(); loadCards(); };
+/* 알림 링크로 진입 — 확인 화면을 거쳐 재질문 시작 (자동 시작 금지) */
 const _cardParam = new URLSearchParams(location.search).get('card');
-if (_cardParam) { history.replaceState({}, '', '/'); startRequestion(_cardParam); }
+if (_cardParam) { history.replaceState({}, '', '/'); showRequestionGate(_cardParam); }
 </script>
 </body>
 </html>

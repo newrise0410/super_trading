@@ -324,3 +324,62 @@ def test_sync_and_search_symbols(conn):
     from aim.socra.engine import resolve_symbol
 
     assert resolve_symbol("셀트리온 어때?", conn) == ("068270", "셀트리온")
+
+
+# ── 클라이언트 리뷰 개선: 은어·후보·건너뛰기 ──────────────────
+
+def _seed_symbols(conn):
+    for code, name in [("005930", "삼성전자"), ("000660", "SK하이닉스"), ("068270", "셀트리온")]:
+        conn.execute(
+            "INSERT OR REPLACE INTO symbols (symbol, name, market, name_norm)"
+            " VALUES (?, ?, 'KOSPI', ?)",
+            (code, name, name.replace(" ", "").lower()),
+        )
+    conn.commit()
+
+
+def test_slang_alias_resolves(conn):
+    """'삼전 살까?'가 6자리 코드 요구 에러로 튕기지 않는다."""
+    _seed_symbols(conn)
+    assert resolve_symbol("삼전 살까?", conn) == ("005930", "삼성전자")
+    assert resolve_symbol("하닉 어때", conn) == ("000660", "SK하이닉스")
+
+
+def test_failed_resolution_returns_candidates_and_warm_message(conn):
+    """오타("삼송전자") → 후보 칩 제시. 종목코드를 요구하는 차가운 에러 금지."""
+    _seed_symbols(conn)
+    from aim.socra.symbols import suggest_symbols
+
+    assert ("005930", "삼성전자") in suggest_symbols(conn, "삼송전자 살까?")
+
+    r = _engine(conn).start_session("삼송전자 살까?")
+    assert "error" in r
+    assert "종목코드 6자리" not in r["error"]
+    assert any(c["symbol"] == "005930" for c in r["candidates"])
+
+    # 막연한 일반 질문 — 후보 없이 따뜻한 안내
+    r2 = _engine(conn).start_session("주식 처음인데 뭐부터 봐야 해요?")
+    assert "error" in r2 and "회사 이름" in r2["error"]
+
+
+def test_skip_advances_stage(conn):
+    """막힌 사용자의 탈출구 — '건너뛸게요'는 다음 단계로, 마지막 단계면 카드로."""
+    engine = _engine(conn, FakeLLM(), FakeLLM([CARD_JSON]))
+    sid = engine.start_session("삼성전자")["session_id"]
+
+    r = engine.handle_message(sid, "이 단계는 건너뛸게요")
+    assert r["stage"] == "valuation" and "건너뛸게요" in r["reply"]
+
+    for _ in range(2):                                   # risk → exit
+        r = engine.handle_message(sid, "스킵")
+    assert r["stage"] == "exit"
+    r = engine.handle_message(sid, "스킵")               # 마지막 단계 스킵 → 카드 직행
+    assert r["stage"] == "card"
+
+
+def test_skip_not_triggered_by_long_answers(conn):
+    """'손절선을 넘어가면 팔 거예요' 같은 실답변은 스킵으로 오인하지 않는다."""
+    engine = _engine(conn, FakeLLM())
+    sid = engine.start_session("삼성전자")["session_id"]
+    r = engine.handle_message(sid, "가격이 손절선 아래로 넘어가면 그때는 팔아야 한다고 생각해요")
+    assert r["stage"] == "business"                      # 그대로 유지
