@@ -49,6 +49,7 @@ class Settings:
     discord_webhooks: dict[str, str]
     discord_bot_token: str   # discord-setup(서버 프로비저닝)용 — 발송에는 불필요
     discord_guild_id: str    # 봇이 여러 서버에 있을 때만 지정
+    discord_owner_id: str    # 상담 봇 응답 대상 오버라이드 (기본: 서버 오너 자동 감지)
     kis_app_key: str
     kis_app_secret: str
     kis_env: str  # prod | vps(모의)
@@ -78,6 +79,7 @@ def get_settings() -> Settings:
         discord_webhooks=_collect_discord_webhooks(),
         discord_bot_token=env("AIM_DISCORD_BOT_TOKEN", ""),
         discord_guild_id=env("AIM_DISCORD_GUILD_ID", ""),
+        discord_owner_id=env("AIM_DISCORD_OWNER_ID", ""),
         kis_app_key=env("AIM_KIS_APP_KEY", ""),
         kis_app_secret=env("AIM_KIS_APP_SECRET", ""),
         kis_env=env("AIM_KIS_ENV", "prod"),

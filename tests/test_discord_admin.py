@@ -28,6 +28,12 @@ class FakeDiscordAPI:
     def __call__(self, method, path, body):
         if method == "GET" and path == "/users/@me/guilds":
             return 200, [{"id": "G1", "name": "테스트서버"}]
+        if method == "GET" and path == "/users/@me":
+            return 200, {"id": "BOT1"}
+        if method == "PATCH" and path.startswith("/channels/"):
+            self.patches = getattr(self, "patches", [])
+            self.patches.append((path.split("/")[2], body))
+            return 200, {}
         if method == "GET" and path == "/guilds/G1/channels":
             return 200, list(self.channels)
         if method == "POST" and path == "/guilds/G1/channels":
@@ -83,6 +89,20 @@ def test_forum_falls_back_to_text():
     assert len([c for c in api.channels if c["type"] == TYPE_TEXT]) == 5  # 전부 텍스트 폴백
     assert len(result.warnings) == 2  # 포럼 2개에 대한 폴백 경고
     assert len(result.env_updates) == 5  # 웹훅은 전부 발급됨
+
+
+def test_private_channels_get_permission_overwrites():
+    api = FakeDiscordAPI()
+    provision(DiscordAdmin("token", req_fn=api), "G1")
+
+    patches = getattr(api, "patches", [])
+    assert len(patches) == 2  # 포트폴리오 + 상담
+    for _channel_id, body in patches:
+        overwrites = body["permission_overwrites"]
+        everyone = next(o for o in overwrites if o["id"] == "G1")
+        bot = next(o for o in overwrites if o["id"] == "BOT1")
+        assert everyone["deny"] == "1024"          # @everyone VIEW 차단
+        assert bot["allow"] == "3072"              # 봇 VIEW+SEND 허용
 
 
 def test_bad_token_raises():

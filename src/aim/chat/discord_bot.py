@@ -1,9 +1,11 @@
-"""디스코드 상담 봇 — #상담 채널에서 LLM 대화 (aim chat).
+"""디스코드 상담 봇 — #상담 채널·DM에서 LLM 대화 (aim chat).
 
 - 게이트웨이(WebSocket) 방식: 봇이 디스코드로 연결 → 공개 서버·포트포워딩 불필요
 - 요구: Developer Portal → Bot → Privileged Gateway Intents → **MESSAGE CONTENT INTENT** 활성화
+- 프라이버시: **서버 오너(=사용자)에게만 응답** — 서버의 #상담 채널 또는 봇과의 DM.
+  타인의 메시지는 무시 (포트폴리오·손익 정보 노출 방지). AIM_DISCORD_OWNER_ID로 오버라이드 가능
 - 컨텍스트: 내 포트폴리오 평가(2분 캐시) + 최근 AI 판단 5건 — 대화는 채널별 최근 12턴 유지
-- "진단" / "!진단" 입력 시 딥씽킹 전체 진단을 #포트폴리오 채널 겸용으로 답변
+- "진단" 입력 시 딥씽킹 전체 진단
 """
 
 from __future__ import annotations
@@ -141,14 +143,30 @@ def run_consult_bot(settings: Settings) -> None:
             conn.close()
         return result or "포트폴리오가 비어있습니다 — aim portfolio add로 등록하세요."
 
+    def _is_owner(message) -> bool:  # noqa: ANN001
+        """서버 오너(=사용자)만 허용. env AIM_DISCORD_OWNER_ID가 있으면 그것을 기준으로."""
+        override = getattr(settings, "discord_owner_id", "")
+        if override:
+            return str(message.author.id) == override
+        if message.guild is not None:
+            return message.author.id == message.guild.owner_id
+        # DM: 봇이 속한 길드 중 하나라도 오너인 사람만
+        return any(g.owner_id == message.author.id for g in client.guilds)
+
     @client.event
     async def on_ready() -> None:
         logger.info("consult bot ready: %s", client.user)
-        print(f"상담 봇 접속 완료: {client.user} — #{CONSULT_CHANNEL} 채널에서 대화하세요 (Ctrl+C 종료)")
+        print(f"상담 봇 접속 완료: {client.user} — #{CONSULT_CHANNEL} 채널 또는 DM으로 대화하세요 (Ctrl+C 종료)")
 
     @client.event
     async def on_message(message) -> None:  # noqa: ANN001
-        if message.author.bot or getattr(message.channel, "name", "") != CONSULT_CHANNEL:
+        if message.author.bot:
+            return
+        is_dm = message.guild is None
+        if not is_dm and getattr(message.channel, "name", "") != CONSULT_CHANNEL:
+            return
+        if not _is_owner(message):
+            logger.info("ignored non-owner message from %s", message.author.id)
             return
         text = message.content.strip()
         if not text:

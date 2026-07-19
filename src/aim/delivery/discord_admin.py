@@ -23,16 +23,21 @@ TYPE_TEXT = 0
 TYPE_CATEGORY = 4
 TYPE_FORUM = 15
 
+# 권한 비트
+PERM_VIEW = 1024          # VIEW_CHANNEL
+PERM_SEND = 2048          # SEND_MESSAGES
+
 CATEGORY_NAME = "AIM 투자매니저"
 WEBHOOK_NAME = "AIM"
 
-# (채널명, 채널타입, .env 키) — 여기에 추가하면 discord-setup이 새로 만든다
-_CHANNEL_SPECS: list[tuple[str, int, str]] = [
-    ("한국장-브리핑", TYPE_FORUM, "AIM_DISCORD_WEBHOOK_KR"),
-    ("미국장-브리핑", TYPE_FORUM, "AIM_DISCORD_WEBHOOK_US"),
-    ("관심종목-시그널", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_SIGNALS"),
-    ("포트폴리오", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_PORTFOLIO"),  # AI 진단 리포트
-    ("상담", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_CONSULT"),          # LLM 대화 (aim chat 봇)
+# (채널명, 채널타입, .env 키, 비공개 여부) — 비공개: @everyone 숨김 + 봇만 접근
+# (서버 오너는 관리자 권한으로 항상 접근 가능)
+_CHANNEL_SPECS: list[tuple[str, int, str, bool]] = [
+    ("한국장-브리핑", TYPE_FORUM, "AIM_DISCORD_WEBHOOK_KR", False),
+    ("미국장-브리핑", TYPE_FORUM, "AIM_DISCORD_WEBHOOK_US", False),
+    ("관심종목-시그널", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_SIGNALS", False),
+    ("포트폴리오", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_PORTFOLIO", True),   # 손익 정보 — 비공개
+    ("상담", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_CONSULT", True),           # 개인 상담 — 비공개
 ]
 
 ReqFn = Callable[[str, str, dict[str, Any] | None], tuple[int, Any]]
@@ -74,6 +79,24 @@ class DiscordAdmin:
         if status != 200:
             raise RuntimeError(f"길드 조회 실패 (HTTP {status}) — 봇 토큰을 확인하세요: {data}")
         return data
+
+    def bot_user_id(self) -> str:
+        status, data = self._req("GET", "/users/@me", None)
+        if status != 200:
+            raise RuntimeError(f"봇 정보 조회 실패 (HTTP {status}): {data}")
+        return str(data["id"])
+
+    def set_private(self, channel_id: str, guild_id: str, bot_id: str) -> bool:
+        """@everyone 숨김 + 봇 접근 허용. 성공 여부 반환."""
+        status, data = self._req("PATCH", f"/channels/{channel_id}", {
+            "permission_overwrites": [
+                {"id": guild_id, "type": 0, "deny": str(PERM_VIEW), "allow": "0"},   # @everyone
+                {"id": bot_id, "type": 1, "allow": str(PERM_VIEW + PERM_SEND), "deny": "0"},
+            ]
+        })
+        if status >= 400:
+            logger.warning("set_private failed for %s: %s", channel_id, data)
+        return status < 400
 
     def get_channels(self, guild_id: str) -> list[dict[str, Any]]:
         status, data = self._req("GET", f"/guilds/{guild_id}/channels", None)
@@ -117,8 +140,10 @@ def provision(admin: DiscordAdmin, guild_id: str) -> ProvisionResult:
             raise RuntimeError(f"카테고리 생성 실패 (HTTP {status}): {category}")
         result.created.append(f"카테고리 '{CATEGORY_NAME}'")
 
-    # 2) 채널 find-or-create (포럼 미지원 시 텍스트 폴백)
-    for name, ch_type, env_key in _CHANNEL_SPECS:
+    bot_id = admin.bot_user_id()
+
+    # 2) 채널 find-or-create (포럼 미지원 시 텍스트 폴백) + 비공개 채널 권한 보장
+    for name, ch_type, env_key, private in _CHANNEL_SPECS:
         channel = by_name.get(name)
         if channel:
             result.reused.append(f"채널 #{name}")
@@ -135,6 +160,13 @@ def provision(admin: DiscordAdmin, guild_id: str) -> ProvisionResult:
                 continue
             kind = "포럼" if channel.get("type") == TYPE_FORUM else "텍스트"
             result.created.append(f"채널 #{name} ({kind})")
+
+        # 비공개 채널: 매 실행마다 권한 보장 (멱등 — 기존 채널도 비공개로 전환됨)
+        if private:
+            if admin.set_private(channel["id"], guild_id, bot_id):
+                result.reused.append(f"🔒 #{name} 비공개 권한 적용")
+            else:
+                result.warnings.append(f"#{name}: 비공개 권한 설정 실패")
 
         # 3) 웹훅 find-or-create
         existing = [w for w in admin.get_webhooks(channel["id"]) if w.get("name") == WEBHOOK_NAME]
