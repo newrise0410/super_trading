@@ -25,6 +25,13 @@ from aim.socra.concepts import detect_terms
 logger = logging.getLogger(__name__)
 
 STAGES = ["business", "valuation", "risk", "exit"]
+
+# 내부 증거 키([tech.rsi14] 등) 누출 방지 — 프롬프트 규칙 + 서버측 이중 필터
+_EVIDENCE_KEY_RE = re.compile(r"\s*\[[a-z][a-z0-9_]*\.[a-z0-9_]+\]")
+
+
+def _clean_reply(text: str) -> str:
+    return _EVIDENCE_KEY_RE.sub("", text).strip()
 TURNS_PER_STAGE = 2
 STAGE_LABEL = {
     "business": "① 사업 이해", "valuation": "② 가격 vs 가치",
@@ -83,13 +90,13 @@ class SocraEngine:
         )
         self._conn.commit()
 
-        opening = self._quick.complete(
+        opening = _clean_reply(self._quick.complete(
             prompts.OPENING_TEMPLATE.format(
                 base=prompts.BASE_GUARD, stage_goal=prompts.STAGE_GOALS["business"],
                 name=name, symbol=symbol, evidence=evidence_md,
             ),
             f"{name} 살까 말까 고민이에요.",
-        )
+        ))
         self._save_turn(session_id, "bot", opening, "business")
         return {
             "session_id": session_id, "symbol": symbol, "name": name,
@@ -114,7 +121,7 @@ class SocraEngine:
             return self._reply(session, "이 세션은 완료됐어요. 사이드바에서 새 대화를 시작해 보세요! 🎉")
 
         # 일반 단계: 소크라테스 턴
-        reply = self._quick.complete(
+        reply = _clean_reply(self._quick.complete(
             prompts.TURN_TEMPLATE.format(
                 base=prompts.BASE_GUARD,
                 stage_goal=prompts.STAGE_GOALS[session["stage"]],
@@ -124,7 +131,7 @@ class SocraEngine:
                 user_text=text,
             ),
             text,
-        )
+        ))
 
         # 단계 진행 판정 (v1: 단계당 사용자 답 N회)
         new_stage = session["stage"]

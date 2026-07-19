@@ -137,6 +137,21 @@ def test_turn_prompt_contains_guardrails_and_evidence(conn):
     assert "① 사업 이해" in system                            # 단계 목표
 
 
+def test_evidence_keys_stripped_from_replies(conn):
+    """내부 증거 키([tech.x])가 사용자 응답에 누출되지 않는다 (서버측 필터)."""
+    quick = FakeLLM([
+        "환영해요 [tech.rsi14] 질문입니다?",              # 오프닝
+        "-11.53% 떨어졌어요 [tech.ret5d][tech.ret20d]. 왜일까요?",  # 턴
+    ])
+    engine = _engine(conn, quick)
+    opening = engine.start_session("삼성전자")
+    assert "[tech" not in opening["reply"]
+
+    result = engine.handle_message(opening["session_id"], "몰라요")
+    assert "[tech" not in result["reply"]
+    assert "-11.53%" in result["reply"]                    # 수치는 보존
+
+
 # ── 범례 ─────────────────────────────────────────────────────
 
 def test_legend_detects_terms_in_order(conn):

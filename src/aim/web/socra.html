@@ -61,7 +61,12 @@
   .col { max-width: 740px; margin: 0 auto; padding: 0 28px; }
   .msg { margin-bottom: 22px; }
   .msg.bot .txt { font-family: Georgia, "Noto Serif KR", serif; font-size: 16.5px;
-                  line-height: 1.75; white-space: pre-wrap; }
+                  line-height: 1.75; }
+  .msg.bot .txt b { font-weight: 700; color: var(--accent-ink); }
+  .msg.bot .txt code { background: var(--accent2-soft); color: var(--accent2);
+                       border-radius: 5px; padding: 1px 6px; font-size: 14px;
+                       font-family: ui-monospace, Consolas, monospace; }
+  .msg.bot .txt hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
   .msg.user { display: flex; justify-content: flex-end; }
   .msg.user .txt { background: var(--accent-soft); color: var(--ink);
                    border-radius: 16px 16px 4px 16px; padding: 10px 16px; max-width: 78%;
@@ -214,19 +219,34 @@ function addTyping() {
   $('msgs').insertAdjacentHTML('beforeend', `<div class="msg bot" id="tp"><div class="typing"></div></div>`);
   scrollDown();
 }
+/* 경량 마크다운 → HTML (봇 응답 전용, 이스케이프 후 안전 변환) */
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function md(s) {
+  s = s.replace(/\s*\[[a-z][a-z0-9_]*\.[a-z0-9_]+\]/g, '');   /* 내부 증거키 방어적 제거 */
+  s = esc(s);
+  s = s.replace(/^#{1,4} (.*)$/gm, '<b>$1</b>');
+  s = s.replace(/^[-—]{3,}$/gm, '<hr>');
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+  s = s.replace(/\*([^*\n]+)\*/g, '<i>$1</i>');
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  s = s.replace(/^\s*[-·•] (.*)$/gm, '&nbsp;•&nbsp;$1');
+  return s.replace(/\n/g, '<br>');
+}
+
 function addBot(text, legend, instant) {
   const tp = $('tp'); if (tp) tp.remove();
   $('msgs').insertAdjacentHTML('beforeend', `<div class="msg bot"><div class="txt"></div></div>`);
   const el = $('msgs').lastElementChild.querySelector('.txt');
-  const finish = () => { if (legend && legend.length) {
-    el.parentElement.insertAdjacentHTML('beforeend',
-      `<div class="legend">${legend.map(l=>`<div>📖 <b>${l.term}</b> — ${l.short_def}</div>`).join('')}</div>`);
-  } scrollDown(); };
-  if (instant) { el.textContent = text; finish(); return; }
-  let i = 0;                                     /* 타자기 효과 */
-  const tick = () => { el.textContent = text.slice(0, i); i += 3;
+  const finish = () => { el.innerHTML = md(text);
+    if (legend && legend.length) {
+      el.parentElement.insertAdjacentHTML('beforeend',
+        `<div class="legend">${legend.map(l=>`<div>📖 <b>${esc(l.term)}</b> — ${esc(l.short_def)}</div>`).join('')}</div>`);
+    } scrollDown(); };
+  if (instant) { finish(); return; }
+  let i = 0;                                     /* 타자기 효과 — 프레임마다 부분 렌더 */
+  const tick = () => { el.innerHTML = md(text.slice(0, i)); i += 4;
     scrollDown();
-    if (i <= text.length + 2) requestAnimationFrame(tick); else finish(); };
+    if (i <= text.length + 3) requestAnimationFrame(tick); else finish(); };
   tick();
 }
 function scrollDown() { $('chat').scrollTop = $('chat').scrollHeight; }
