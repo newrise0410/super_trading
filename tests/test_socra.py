@@ -135,6 +135,8 @@ def test_turn_prompt_contains_guardrails_and_evidence(conn):
     assert "판단을 대신하는 말을 절대 하지 않는다" in system   # 가드레일
     assert "RSI(14)" in system                                # 증거
     assert "① 사업 이해" in system                            # 단계 목표
+    assert "반증 조건" in system                              # 인사이트 검증 규칙
+    assert "배경지식으로 판정하지 마라" in system              # 환각 검증 금지
 
 
 def test_evidence_keys_stripped_from_replies(conn):
