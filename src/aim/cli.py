@@ -124,6 +124,12 @@ def main() -> None:
 
     sub.add_parser("symbols-sync", help="상장 종목 마스터 동기화 (소크라 종목 검색용)")
 
+    p_cards = sub.add_parser("cards", help="결정 카드 (소크라)")
+    cards_sub = p_cards.add_subparsers(dest="cards_command", required=True)
+    cards_sub.add_parser("list", help="활성 카드 목록")
+    c_rev = cards_sub.add_parser("review", help="카드 감시 리뷰 — 기준선·근거 diff·재검토 조건")
+    c_rev.add_argument("--channel", default="console", choices=["console", "discord"])
+
     sub.add_parser("test-telegram", help="텔레그램 연결 테스트 (chat_id 미설정 시 자동 감지)")
     sub.add_parser("test-discord", help="디스코드 웹훅 연결 테스트")
     sub.add_parser("discord-setup", help="디스코드 서버 프로비저닝 — 채널·웹훅 자동 생성 + .env 기록")
@@ -181,6 +187,47 @@ def main() -> None:
         from aim.web.app import run_dashboard
 
         run_dashboard(settings, port=args.port)
+
+    elif args.command == "cards":
+        from aim.storage import db
+
+        conn = db.connect(settings.db_path)
+        try:
+            db.migrate(conn)
+            if args.cards_command == "list":
+                rows = conn.execute(
+                    "SELECT * FROM decision_cards WHERE status='active' ORDER BY created_at DESC"
+                ).fetchall()
+                if not rows:
+                    print("(활성 카드 없음 — 웹에서 소크라 여정을 완주하면 생깁니다)")
+                for r in rows:
+                    target = f"{r['target_price']:,.0f}" if r["target_price"] else "미설정"
+                    stop = f"{r['stop_price']:,.0f}" if r["stop_price"] else "미설정"
+                    print(f"[v{r['version']}] {r['name']}({r['symbol']}) 목표 {target} / 손절 {stop}"
+                          f" · {r['created_at'][:10]}")
+                    print(f"    논지: {r['thesis'][:80]}")
+            else:  # review
+                from aim.llm import build_llm
+                from aim.socra.watchcards import review_cards
+
+                router = None
+                if args.channel == "discord":
+                    from aim.delivery.router import build_router
+
+                    router = build_router(settings, respect_dry_run=False, include_console=False)
+                try:
+                    quick = build_llm(settings, "quick")
+                except RuntimeError:
+                    quick = None
+                results = review_cards(conn, settings, quick, router)
+                if not results:
+                    print("변화 없음 — 모든 카드의 근거·기준선 이상 무")
+                for res in results:
+                    print(f"🔄 {res['name']}({res['symbol']}):")
+                    for a in res["alerts"]:
+                        print(f"   - {a}")
+        finally:
+            conn.close()
 
     elif args.command == "symbols-sync":
         from aim.socra.symbols import sync_symbols

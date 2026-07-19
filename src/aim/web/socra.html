@@ -178,8 +178,9 @@
 
 <script>
 const $ = id => document.getElementById(id);
-let SID = null, BUSY = false;
+let SID = null, BUSY = false, SESS_KIND = 'journey';
 const STAGES = [["business","① 사업"],["valuation","② 가치"],["risk","③ 리스크"],["exit","④ 출구"],["card","카드"]];
+const STAGES_RECHECK = [["recheck","🔄 재점검"],["card","카드"]];
 
 async function api(url, body) {
   const r = await fetch(url, body ? {method:'POST', headers:{'Content-Type':'application/json'},
@@ -194,7 +195,7 @@ async function loadSessions() {
     `<div class="sess ${s.session_id===SID?'active':''}" onclick="openSession('${s.session_id}')">
        <span>${s.name}</span><span class="st">${stageLabel(s.stage)}</span></div>`).join('');
 }
-function stageLabel(st) { return ({business:'①',valuation:'②',risk:'③',exit:'④',card:'카드',done:'✓'})[st]||st; }
+function stageLabel(st) { return ({business:'①',valuation:'②',risk:'③',exit:'④',card:'카드',done:'✓',recheck:'🔄'})[st]||st; }
 
 /* ── 화면 전환 ── */
 function showEmpty() { SID=null; $('empty').style.display='flex'; $('chat').style.display='none';
@@ -203,8 +204,9 @@ function showChat() { $('empty').style.display='none'; $('chat').style.display='
   $('inputbar').style.display='block'; $('stagebar').style.display='flex'; }
 
 function renderStagebar(stage) {
-  const idx = STAGES.findIndex(([k])=>k===stage);
-  $('stagebar').innerHTML = STAGES.map(([k,label],i) =>
+  const list = SESS_KIND === 'recheck' ? STAGES_RECHECK : STAGES;
+  const idx = list.findIndex(([k])=>k===stage);
+  $('stagebar').innerHTML = list.map(([k,label],i) =>
     `<span class="stg ${i<idx||stage==='done'?'done':(k===stage?'now':'')}">${label}</span>`).join('');
 }
 
@@ -255,7 +257,7 @@ function scrollDown() { $('chat').scrollTop = $('chat').scrollHeight; }
 function startWith(q) { $('input0').value = q; createFromEmpty(); }
 async function createFromEmpty() {
   const q = $('input0').value.trim(); if (!q || BUSY) return;
-  BUSY = true; $('send0').disabled = true;
+  BUSY = true; $('send0').disabled = true; SESS_KIND = 'journey';
   showChat(); $('msgs').innerHTML=''; resetCard(); addUser(q); addTyping();
   const d = await api('/api/socra/sessions', {query: q});
   BUSY = false; $('send0').disabled = false; $('input0').value='';
@@ -263,9 +265,22 @@ async function createFromEmpty() {
   SID = d.session_id; renderStagebar(d.stage); addBot(d.reply, d.legend);
   loadSessions(); $('input').focus();
 }
+
+/* 근거 변화 알림 링크(?card=...) → 재질문 세션 (§4.5) */
+async function startRequestion(cardId) {
+  if (BUSY) return;
+  BUSY = true; SESS_KIND = 'recheck';
+  showChat(); $('msgs').innerHTML=''; resetCard(); addTyping();
+  const d = await api('/api/socra/requestion', {card_id: cardId});
+  BUSY = false;
+  if (d.error) { addBot(d.error, [], true); return; }
+  SID = d.session_id; renderStagebar(d.stage); addBot(d.reply, d.legend);
+  loadSessions(); $('input').focus();
+}
 async function openSession(id) {
   SID = id; showChat(); resetCard();
   const d = await api('/api/socra/sessions/'+id);
+  SESS_KIND = d.session.kind || 'journey';
   renderStagebar(d.session.stage);
   $('msgs').innerHTML = '';
   for (const t of d.turns) {
@@ -327,6 +342,9 @@ for (const [inp, btn] of [['input','send'],['input0','send0']]) {
   });
 }
 loadSessions();
+/* 알림 링크로 진입한 경우 재질문 세션 자동 시작 */
+const _cardParam = new URLSearchParams(location.search).get('card');
+if (_cardParam) { history.replaceState({}, '', '/'); startRequestion(_cardParam); }
 </script>
 </body>
 </html>

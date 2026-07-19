@@ -51,6 +51,25 @@ def build_bus(settings: Settings) -> EventBus:
         "market_close_kr",
         lambda **kw: run_kr_close_briefing(settings, provider, router),
     )
+
+    def _review_decision_cards(**kw) -> None:
+        """마감 후 결정 카드 감시 (§4.5) — 브리핑과 별개 핸들러 (실패 격리)."""
+        from aim.llm import build_llm  # noqa: PLC0415
+        from aim.socra.watchcards import review_cards  # noqa: PLC0415
+        from aim.storage import db as db_mod2  # noqa: PLC0415
+
+        card_conn = db_mod2.connect(settings.db_path)
+        try:
+            db_mod2.migrate(card_conn)
+            try:
+                quick = build_llm(settings, "quick")
+            except RuntimeError:
+                quick = None
+            review_cards(card_conn, settings, quick, router)
+        finally:
+            card_conn.close()
+
+    bus.subscribe("market_close_kr", _review_decision_cards)
     bus.subscribe(
         "market_open_us",
         lambda **kw: run_us_open_briefing(settings, router),

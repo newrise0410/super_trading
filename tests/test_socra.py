@@ -126,7 +126,9 @@ def test_full_journey_reaches_card_and_saves(conn):
     card = conn.execute("SELECT * FROM decision_cards").fetchone()
     assert card["thesis"].startswith("HBM")
     assert card["version"] == 1 and card["status"] == "active"
-    assert "RSI(14)" in json.loads(card["evidence_snapshot_json"])["evidence_md"]  # §4.5 동결
+    snap = json.loads(card["evidence_snapshot_json"])                              # §4.5 동결
+    assert any(i["key"] == "tech.rsi14" for i in snap["items"])                    # 구조화 스냅샷
+    assert snap["price"] == 255000.0
 
 
 def test_resave_supersedes_previous_card(conn):

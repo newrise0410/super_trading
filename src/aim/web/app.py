@@ -180,6 +180,19 @@ def create_app(settings: Settings):
         finally:
             conn.close()
 
+    @app.post("/api/socra/requestion")
+    def requestion_create(payload: dict = Body(...)):
+        """근거 변화 알림 → 재질문 세션 (§4.5)."""
+        if quick_llm is None:
+            return JSONResponse({"error": "LLM 미설정"}, status_code=503)
+        conn = _conn()
+        try:
+            return SocraEngine(conn, settings, quick_llm, deep_llm).start_requestion(
+                str(payload.get("card_id", ""))
+            )
+        finally:
+            conn.close()
+
     @app.post("/api/socra/sessions/{session_id}/messages")
     def session_message(session_id: str, payload: dict = Body(...)):
         if quick_llm is None:
