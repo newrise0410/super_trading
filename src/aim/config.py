@@ -53,10 +53,12 @@ class Settings:
     kis_app_secret: str
     kis_env: str  # prod | vps(모의)
     dart_api_key: str
-    llm_provider: str
-    llm_api_key: str
-    llm_deep_model: str
-    llm_quick_model: str
+    # LLM 2-티어: 딥씽킹(판정자) = Codex CLI (ChatGPT 구독 OAuth, 토큰 갱신은 CLI가 담당)
+    #             퀵씽킹(애널리스트) = MiniMax API
+    minimax_api_key: str
+    minimax_model: str
+    minimax_base_url: str
+    codex_model: str  # 비우면 Codex CLI 기본 모델
 
 
 def get_settings() -> Settings:
@@ -79,8 +81,8 @@ def get_settings() -> Settings:
         kis_app_secret=env("AIM_KIS_APP_SECRET", ""),
         kis_env=env("AIM_KIS_ENV", "prod"),
         dart_api_key=env("AIM_DART_API_KEY", ""),
-        llm_provider=env("AIM_LLM_PROVIDER", ""),
-        llm_api_key=env("AIM_LLM_API_KEY", ""),
-        llm_deep_model=env("AIM_LLM_DEEP_MODEL", ""),
-        llm_quick_model=env("AIM_LLM_QUICK_MODEL", ""),
+        minimax_api_key=env("AIM_MINIMAX_API_KEY", ""),
+        minimax_model=env("AIM_MINIMAX_MODEL", "MiniMax-M2"),
+        minimax_base_url=env("AIM_MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
+        codex_model=env("AIM_CODEX_MODEL", ""),
     )

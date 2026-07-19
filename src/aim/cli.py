@@ -53,6 +53,9 @@ def main() -> None:
 
     sub.add_parser("baseline-rebuild", help="관측치로 거래량 baseline 재계산 (야간/수동)")
 
+    p_llm = sub.add_parser("test-llm", help="LLM 2-티어 연결 테스트 (deep=Codex, quick=MiniMax)")
+    p_llm.add_argument("--tier", choices=["deep", "quick", "both"], default="both")
+
     sub.add_parser("test-telegram", help="텔레그램 연결 테스트 (chat_id 미설정 시 자동 감지)")
     sub.add_parser("test-discord", help="디스코드 웹훅 연결 테스트")
     sub.add_parser("discord-setup", help="디스코드 서버 프로비저닝 — 채널·웹훅 자동 생성 + .env 기록")
@@ -203,6 +206,30 @@ def main() -> None:
         finally:
             conn.close()
         print(f"baseline 갱신: {updated}개 (symbol, slot)")
+
+    elif args.command == "test-llm":
+        import time as time_mod
+
+        from aim.llm import build_llm
+
+        tiers = ["deep", "quick"] if args.tier == "both" else [args.tier]
+        for tier in tiers:
+            try:
+                client = build_llm(settings, tier)
+            except RuntimeError as exc:
+                print(f"[{tier}] 사용 불가: {exc}")
+                continue
+            print(f"[{tier}] {client.name} ({client.model}) 호출 중...")
+            start = time_mod.time()
+            try:
+                reply = client.complete(
+                    "당신은 금융 리서치 어시스턴트입니다. 한 문장으로만 답하세요.",
+                    "코스피와 코스닥의 차이를 한 문장으로 설명해주세요.",
+                )
+                elapsed = time_mod.time() - start
+                print(f"[{tier}] ✓ {elapsed:.1f}s — {reply[:120]}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"[{tier}] ✗ 실패: {exc}")
 
     elif args.command == "test-telegram":
         import requests
