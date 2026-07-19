@@ -17,18 +17,15 @@ logger = logging.getLogger(__name__)
 def build_bus(settings: Settings) -> EventBus:
     """이벤트 → 파이프라인 핸들러 배선."""
     from aim.data.krx import PykrxKRProvider  # noqa: PLC0415
-    from aim.delivery.console import ConsoleNotifier  # noqa: PLC0415
-    from aim.delivery.telegram import TelegramNotifier  # noqa: PLC0415
+    from aim.delivery.router import build_router  # noqa: PLC0415
     from aim.pipelines import run_kr_close_briefing  # noqa: PLC0415
 
-    notifiers = [ConsoleNotifier()]
-    if not settings.dry_run and settings.telegram_bot_token:
-        notifiers.append(TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id))
+    router = build_router(settings)  # 디스코드 route별 + default, dry_run 반영
 
     bus = EventBus()
     bus.subscribe(
         "market_close_kr",
-        lambda **kw: run_kr_close_briefing(settings, PykrxKRProvider(), notifiers),
+        lambda **kw: run_kr_close_briefing(settings, PykrxKRProvider(), router),
     )
     # TODO(P1+): market_open_kr / market_open_us / market_close_us 핸들러
     return bus

@@ -19,8 +19,22 @@ def _load_dotenv(path: Path) -> None:
             continue
         key, _, value = line.partition("=")
         key, value = key.strip(), value.split("#")[0].strip()
-        if key and key not in os.environ:
+        # 빈 값 줄은 무시 — 같은 키가 뒤에 다시 나오면 그 값을 쓸 수 있게
+        if key and value and key not in os.environ:
             os.environ[key] = value
+
+
+def _collect_discord_webhooks() -> dict[str, str]:
+    """AIM_DISCORD_WEBHOOK_* 환경변수 → {route: url}. _URL 접미사는 "default"."""
+    prefix = "AIM_DISCORD_WEBHOOK_"
+    webhooks: dict[str, str] = {}
+    for key, value in os.environ.items():
+        if not key.startswith(prefix) or not value.strip():
+            continue
+        suffix = key[len(prefix):].lower()
+        route = "default" if suffix == "url" else suffix
+        webhooks[route] = value.strip()
+    return webhooks
 
 
 @dataclass(frozen=True)
@@ -29,6 +43,12 @@ class Settings:
     db_path: Path
     telegram_bot_token: str
     telegram_chat_id: str
+    # route(소문자) → 웹훅 URL. AIM_DISCORD_WEBHOOK_URL → "default",
+    # AIM_DISCORD_WEBHOOK_KR → "kr", _US → "us", _SIGNALS → "signals",
+    # _SURGE → "surge", _DISCLOSURE → "disclosure" ... (임의 접미사 허용)
+    discord_webhooks: dict[str, str]
+    discord_bot_token: str   # discord-setup(서버 프로비저닝)용 — 발송에는 불필요
+    discord_guild_id: str    # 봇이 여러 서버에 있을 때만 지정
     kis_app_key: str
     kis_app_secret: str
     kis_env: str  # prod | vps(모의)
@@ -52,6 +72,9 @@ def get_settings() -> Settings:
         db_path=db_path,
         telegram_bot_token=env("AIM_TELEGRAM_BOT_TOKEN", ""),
         telegram_chat_id=env("AIM_TELEGRAM_CHAT_ID", ""),
+        discord_webhooks=_collect_discord_webhooks(),
+        discord_bot_token=env("AIM_DISCORD_BOT_TOKEN", ""),
+        discord_guild_id=env("AIM_DISCORD_GUILD_ID", ""),
         kis_app_key=env("AIM_KIS_APP_KEY", ""),
         kis_app_secret=env("AIM_KIS_APP_SECRET", ""),
         kis_env=env("AIM_KIS_ENV", "prod"),

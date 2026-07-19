@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from aim.delivery.util import split_message
+
 logger = logging.getLogger(__name__)
 
 _TELEGRAM_LIMIT = 4096
@@ -23,7 +25,7 @@ class TelegramNotifier:
 
         text = f"*{title}*\n\n{body_md}"
         ok = True
-        for chunk in _split(text, _TELEGRAM_LIMIT):
+        for chunk in split_message(text, _TELEGRAM_LIMIT):
             resp = requests.post(
                 f"https://api.telegram.org/bot{self._token}/sendMessage",
                 json={"chat_id": self._chat_id, "text": chunk, "parse_mode": "Markdown"},
@@ -40,19 +42,3 @@ class TelegramNotifier:
                 logger.error("telegram send failed: %s %s", resp.status_code, resp.text[:200])
                 ok = False
         return ok
-
-
-def _split(text: str, limit: int) -> list[str]:
-    if len(text) <= limit:
-        return [text]
-    chunks, current = [], []
-    size = 0
-    for line in text.splitlines(keepends=True):
-        if size + len(line) > limit and current:
-            chunks.append("".join(current))
-            current, size = [], 0
-        current.append(line)
-        size += len(line)
-    if current:
-        chunks.append("".join(current))
-    return chunks

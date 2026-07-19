@@ -13,7 +13,7 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime
 
-from aim.delivery.notifier import Notifier
+from aim.delivery.router import NotificationRouter
 from aim.knowledge import KnowledgeStore
 from aim.storage.repositories.watch import (
     BaselineRepository,
@@ -36,6 +36,14 @@ logger = logging.getLogger(__name__)
 _PRICE_WINDOW_MIN = 5.0    # 급변 감지 창 (분)
 _HISTORY_MAXLEN = 60       # 심볼당 가격 이력 보관 (30초 폴링 × 30분)
 
+# 시그널 종류 → 채널 route 체인 (앞에서부터 설정된 첫 채널로, 전부 없으면 default)
+_SIGNAL_ROUTES: dict[str, tuple[str, ...]] = {
+    "VOLUME_SURGE": ("surge", "signals"),
+    "PRICE_MOVE": ("surge", "signals"),
+    "COMBO": ("surge", "signals"),
+    "DISCLOSURE": ("disclosure", "signals"),
+}
+
 
 class WatchTracker:
     def __init__(
@@ -43,7 +51,7 @@ class WatchTracker:
         conn: sqlite3.Connection,
         quote_provider: IntradayProvider,
         disclosure_provider: DisclosureProvider,
-        notifiers: list[Notifier],
+        router: NotificationRouter,
         *,
         z_threshold: float = 3.0,
         price_threshold_pct: float = 3.0,
@@ -56,7 +64,7 @@ class WatchTracker:
         self._cooldown = Cooldown(self._signals, minutes=cooldown_minutes)
         self._quotes = quote_provider
         self._disclosures = disclosure_provider
-        self._notifiers = notifiers
+        self._router = router
         self._z_threshold = z_threshold
         self._price_threshold_pct = price_threshold_pct
         # 심볼별 (시각, 가격) 이력 — 단기 급변 감지용
@@ -185,7 +193,5 @@ class WatchTracker:
         icon = {"info": "ℹ️", "notable": "🔔", "critical": "🚨"}.get(sig.severity, "🔔")
         title = f"{icon} 관심종목 시그널 — {sig.name or sig.symbol}"
         body = f"**{sig.name}** ({sig.symbol}) [{sig.kind}]\n{sig.message}"
-        ok = True
-        for notifier in self._notifiers:
-            ok = notifier.send(title, body) and ok
-        return ok
+        routes = _SIGNAL_ROUTES.get(sig.kind, ("signals",))
+        return self._router.send(routes, title, body)

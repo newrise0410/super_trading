@@ -33,7 +33,7 @@ def main() -> None:
     p_brief.add_argument("kind", choices=["kr-close"], help="리포트 종류 (P1: kr-close)")
     p_brief.add_argument("--date", default=None, help="YYYY-MM-DD (기본: 오늘)")
     p_brief.add_argument("--mock", action="store_true", help="캔드 데이터 사용 (의존성/네트워크 불필요)")
-    p_brief.add_argument("--channel", default="console", choices=["console", "telegram"])
+    p_brief.add_argument("--channel", default="console", choices=["console", "telegram", "discord"])
 
     sub.add_parser("schedule", help="정시 리포트 스케줄러 상주 실행")
 
@@ -50,6 +50,10 @@ def main() -> None:
     p_watch = sub.add_parser("watch", help="관심종목 실시간 추적·시그널")
     p_watch.add_argument("--mock", action="store_true", help="데모 시나리오 재생 (키 불필요)")
     p_watch.add_argument("--interval", type=int, default=30, help="폴링 주기(초)")
+
+    sub.add_parser("test-telegram", help="텔레그램 연결 테스트 (chat_id 미설정 시 자동 감지)")
+    sub.add_parser("test-discord", help="디스코드 웹훅 연결 테스트")
+    sub.add_parser("discord-setup", help="디스코드 서버 프로비저닝 — 채널·웹훅 자동 생성 + .env 기록")
 
     args = parser.parse_args()
     settings = get_settings()
@@ -77,16 +81,23 @@ def main() -> None:
 
             provider = PykrxKRProvider()
 
+        from aim.delivery.router import NotificationRouter, build_router
+
         if args.channel == "telegram":
             from aim.delivery.telegram import TelegramNotifier
 
-            notifiers = [TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id)]
+            router = NotificationRouter(
+                {}, [TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id)]
+            )
+        elif args.channel == "discord":
+            # 명시적 지정이므로 dry_run 무시, 콘솔 없이 디스코드 route만
+            router = build_router(settings, respect_dry_run=False, include_console=False)
         else:
             from aim.delivery.console import ConsoleNotifier
 
-            notifiers = [ConsoleNotifier()]
+            router = NotificationRouter({}, [ConsoleNotifier()])
 
-        report_id = run_kr_close_briefing(settings, provider, notifiers, date=args.date)
+        report_id = run_kr_close_briefing(settings, provider, router, date=args.date)
         print(f"\nreport saved: {report_id}")
 
     elif args.command == "schedule":
@@ -131,9 +142,13 @@ def main() -> None:
                 from aim.storage.repositories.watch import BaselineRepository, WatchlistRepository
                 from aim.watch.provider import demo_scenario
 
+                from aim.delivery.router import NotificationRouter
+
                 quotes, disclosures, demo_symbol = demo_scenario(BaselineRepository(conn))
                 WatchlistRepository(conn).add(demo_symbol, "삼성전자", "KR")
-                tracker = WatchTracker(conn, quotes, disclosures, [ConsoleNotifier()])
+                tracker = WatchTracker(
+                    conn, quotes, disclosures, NotificationRouter({}, [ConsoleNotifier()])
+                )
                 for at in ("2026-07-20 10:00:00", "2026-07-20 10:05:00"):
                     fired = tracker.run_once(datetime.strptime(at, "%Y-%m-%d %H:%M:%S"))
                     print(f"\n[{at}] fired: {[s.kind for s in fired] or '(없음)'}")
@@ -144,25 +159,117 @@ def main() -> None:
                     print("키 발급(무료): https://opendart.fss.or.kr")
                     return
 
-                from aim.delivery.telegram import TelegramNotifier
+                from aim.delivery.router import build_router
                 from aim.watch.dart import OpenDartDisclosureProvider
                 from aim.watch.provider import NullIntradayProvider
 
-                notifiers = [ConsoleNotifier()]
-                if not settings.dry_run and settings.telegram_bot_token:
-                    notifiers.append(
-                        TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id)
-                    )
+                router = build_router(settings)  # 디스코드 route별 + default, dry_run 반영
 
                 dart = OpenDartDisclosureProvider(settings.dart_api_key, conn)
                 dart.prime()  # 기동 시 당일 기존 공시는 조용히 처리 (알림 폭주 방지)
 
-                tracker = WatchTracker(conn, NullIntradayProvider(), dart, notifiers)
+                tracker = WatchTracker(conn, NullIntradayProvider(), dart, router)
                 interval = max(args.interval, 60)  # DART 쿼터 보호 — 최소 60초
                 print(f"공시 추적 시작 (interval {interval}s, 창 07:00~19:00) — Ctrl+C로 중단")
                 tracker.run_forever(poll_interval_sec=interval, window=("07:00", "19:00"))
         finally:
             conn.close()
+
+    elif args.command == "test-telegram":
+        import requests
+
+        if not settings.telegram_bot_token:
+            print("AIM_TELEGRAM_BOT_TOKEN 미설정 — 텔레그램 @BotFather에서 /newbot으로 발급 후 .env에 입력하세요.")
+            return
+
+        chat_id = settings.telegram_chat_id
+        if not chat_id:
+            # 자동 감지: 사용자가 봇에게 먼저 아무 메시지나 보냈다면 getUpdates에서 chat_id 확인 가능
+            resp = requests.get(
+                f"https://api.telegram.org/bot{settings.telegram_bot_token}/getUpdates", timeout=15
+            ).json()
+            chats = {
+                str(u["message"]["chat"]["id"]): u["message"]["chat"].get(
+                    "username", u["message"]["chat"].get("first_name", "?")
+                )
+                for u in resp.get("result", [])
+                if "message" in u
+            }
+            if not chats:
+                print("chat_id 자동 감지 실패 — 먼저 텔레그램에서 봇에게 아무 메시지나 보낸 뒤 다시 실행하세요.")
+                return
+            for cid, name in chats.items():
+                print(f"감지된 chat_id: {cid} ({name})")
+            chat_id = next(iter(chats))
+            print(f"→ .env에 추가하세요: AIM_TELEGRAM_CHAT_ID={chat_id}")
+
+        from aim.delivery.telegram import TelegramNotifier
+
+        ok = TelegramNotifier(settings.telegram_bot_token, chat_id).send(
+            "AIM 연결 테스트", "텔레그램 연결 성공 ✅\n이 채널로 리포트와 관심종목 시그널이 발송됩니다."
+        )
+        print("발송 성공 ✓" if ok else "발송 실패 ✗ (토큰/chat_id 확인)")
+
+    elif args.command == "test-discord":
+        if not settings.discord_webhooks:
+            print("AIM_DISCORD_WEBHOOK_* 미설정 — 디스코드 채널 편집 → 연동 → 웹훅 → URL 복사 후 .env에 입력하세요.")
+            print("예: AIM_DISCORD_WEBHOOK_URL(기본), _KR(한국장), _US(미국장), _SIGNALS(시그널), _SURGE(급등주), _DISCLOSURE(공시)")
+            return
+
+        from aim.delivery.discord import DiscordNotifier
+
+        route_desc = {
+            "default": "기본(폴백)", "kr": "한국장 브리핑", "us": "미국장 브리핑",
+            "signals": "관심종목 시그널", "surge": "급등주 시그널", "disclosure": "공시 알림",
+            "weekly": "주간 리포트",
+        }
+        for route, url in sorted(settings.discord_webhooks.items()):
+            desc = route_desc.get(route, route)
+            ok = DiscordNotifier(url).send(
+                f"AIM 채널 테스트 — {desc}",
+                f"이 채널은 **{desc}** (route: `{route}`) 용도로 연결됐습니다 ✅",
+            )
+            print(f"[{route}] {desc}: {'발송 성공 ✓' if ok else '발송 실패 ✗'}")
+
+    elif args.command == "discord-setup":
+        from aim.config import ROOT
+        from aim.delivery.discord_admin import DiscordAdmin, provision, update_env_file
+
+        if not settings.discord_bot_token:
+            print("AIM_DISCORD_BOT_TOKEN 미설정 — 봇 생성 후 토큰을 .env에 입력하세요:")
+            print("  1. https://discord.com/developers/applications → New Application")
+            print("  2. Bot 탭 → Reset Token → 복사 → .env의 AIM_DISCORD_BOT_TOKEN에 입력")
+            print("  3. OAuth2 탭에서 CLIENT_ID 확인 후 아래 URL로 서버에 초대:")
+            print("     https://discord.com/oauth2/authorize?client_id=<CLIENT_ID>&scope=bot&permissions=536870928")
+            return
+
+        admin = DiscordAdmin(settings.discord_bot_token)
+        guilds = admin.list_guilds()
+        if not guilds:
+            print("봇이 참여한 서버가 없습니다 — 초대 URL로 서버에 먼저 초대하세요.")
+            return
+        if len(guilds) > 1 and not settings.discord_guild_id:
+            print("봇이 여러 서버에 있습니다 — .env의 AIM_DISCORD_GUILD_ID에 대상 서버 ID를 지정하세요:")
+            for g in guilds:
+                print(f"  {g['id']}  {g['name']}")
+            return
+        guild = next(
+            (g for g in guilds if g["id"] == settings.discord_guild_id), guilds[0]
+        )
+        print(f"대상 서버: {guild['name']}")
+
+        result = provision(admin, guild["id"])
+        for item in result.created:
+            print(f"  + 생성: {item}")
+        for item in result.reused:
+            print(f"  = 재사용: {item}")
+        for warning in result.warnings:
+            print(f"  ! {warning}")
+
+        if result.env_updates:
+            changed = update_env_file(ROOT / ".env", result.env_updates)
+            print(f"\n.env 갱신: {', '.join(changed) if changed else '(변경 없음 — 이미 최신)'}")
+            print("다음: aim test-discord 로 채널별 발송 확인")
 
 
 if __name__ == "__main__":

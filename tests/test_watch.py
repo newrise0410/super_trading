@@ -4,6 +4,7 @@ from datetime import datetime
 
 import pytest
 
+from aim.delivery.router import NotificationRouter
 from aim.storage import db
 from aim.storage.repositories.watch import (
     BaselineRepository,
@@ -103,7 +104,7 @@ def test_tracker_demo_scenario_fires_combo(conn):
     quotes, disclosures, symbol = demo_scenario(BaselineRepository(conn))
     WatchlistRepository(conn).add(symbol, "삼성전자")
     notifier = ListNotifier()
-    tracker = WatchTracker(conn, quotes, disclosures, [notifier])
+    tracker = WatchTracker(conn, quotes, disclosures, NotificationRouter({}, [notifier]))
 
     # 10:00 — 평온: 시그널 없음
     fired1 = tracker.run_once(datetime(2026, 7, 20, 10, 0))
@@ -130,5 +131,5 @@ def test_tracker_demo_scenario_fires_combo(conn):
 
 def test_tracker_empty_watchlist_noop(conn):
     quotes, disclosures, _ = demo_scenario(BaselineRepository(conn))
-    tracker = WatchTracker(conn, quotes, disclosures, [ListNotifier()])
+    tracker = WatchTracker(conn, quotes, disclosures, NotificationRouter({}, [ListNotifier()]))
     assert tracker.run_once(datetime(2026, 7, 20, 10, 0)) == []

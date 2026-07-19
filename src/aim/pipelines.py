@@ -10,7 +10,7 @@ from datetime import date as date_cls
 
 from aim.config import Settings
 from aim.data.provider import MarketDataProvider
-from aim.delivery.notifier import Notifier
+from aim.delivery.router import NotificationRouter
 from aim.reports.master import build_kr_close_briefing
 from aim.reports.personal import build_personal_section
 from aim.storage import db
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 def run_kr_close_briefing(
     settings: Settings,
     provider: MarketDataProvider,
-    notifiers: list[Notifier],
+    router: NotificationRouter,
     date: str | None = None,
 ) -> str:
     """KR 마감 브리핑 생성·저장·발송. report_id 반환."""
@@ -45,8 +45,6 @@ def run_kr_close_briefing(
     final_md = master_md + (f"\n\n{personal_md}" if personal_md else "")
 
     title = f"🇰🇷 마감 브리핑 {date}"
-    for notifier in notifiers:
-        ok = notifier.send(title, final_md)
-        logger.info("delivery via %s: %s", notifier.name, "ok" if ok else "FAILED")
+    router.send("kr", title, final_md)  # #한국장 채널 (미설정 시 default 폴백)
 
     return report_id
