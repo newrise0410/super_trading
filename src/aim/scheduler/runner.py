@@ -16,16 +16,30 @@ logger = logging.getLogger(__name__)
 
 def build_bus(settings: Settings) -> EventBus:
     """이벤트 → 파이프라인 핸들러 배선."""
-    from aim.data.krx import PykrxKRProvider  # noqa: PLC0415
     from aim.delivery.router import build_router  # noqa: PLC0415
     from aim.pipelines import run_kr_close_briefing  # noqa: PLC0415
 
     router = build_router(settings)  # 디스코드 route별 + default, dry_run 반영
 
+    if settings.kis_app_key and settings.kis_app_secret:
+        from aim.data.kis.auth import KISAuth  # noqa: PLC0415
+        from aim.data.kis.market import KISMarketProvider  # noqa: PLC0415
+        from aim.storage import db as db_mod  # noqa: PLC0415
+
+        conn = db_mod.connect(settings.db_path)
+        db_mod.migrate(conn)
+        provider = KISMarketProvider(
+            conn, KISAuth(settings.kis_app_key, settings.kis_app_secret, settings.kis_env)
+        )
+    else:
+        from aim.data.krx import PykrxKRProvider  # noqa: PLC0415
+
+        provider = PykrxKRProvider()
+
     bus = EventBus()
     bus.subscribe(
         "market_close_kr",
-        lambda **kw: run_kr_close_briefing(settings, PykrxKRProvider(), router),
+        lambda **kw: run_kr_close_briefing(settings, provider, router),
     )
     # TODO(P1+): market_open_kr / market_open_us / market_close_us 핸들러
     return bus

@@ -53,9 +53,10 @@ def test_provision_creates_everything():
 
     assert len([c for c in api.channels if c["type"] == TYPE_CATEGORY]) == 1
     assert len([c for c in api.channels if c["type"] == TYPE_FORUM]) == 2   # 한국장·미국장
-    assert len([c for c in api.channels if c["type"] == TYPE_TEXT]) == 1    # 시그널
+    assert len([c for c in api.channels if c["type"] == TYPE_TEXT]) == 3    # 시그널·포트폴리오·상담
     assert set(result.env_updates) == {
         "AIM_DISCORD_WEBHOOK_KR", "AIM_DISCORD_WEBHOOK_US", "AIM_DISCORD_WEBHOOK_SIGNALS",
+        "AIM_DISCORD_WEBHOOK_PORTFOLIO", "AIM_DISCORD_WEBHOOK_CONSULT",
     }
     assert all(u.startswith("https://discord.com/api/webhooks/") for u in result.env_updates.values())
     assert result.warnings == []
@@ -70,8 +71,8 @@ def test_provision_idempotent_on_rerun():
     result2 = provision(admin, "G1")
     assert len(api.channels) == channels_after_first  # 중복 생성 없음
     assert result2.created == []
-    assert len(result2.reused) >= 4  # 카테고리 + 채널 3 + 웹훅 3
-    assert len(result2.env_updates) == 3  # URL은 여전히 반환 (재기록 안전)
+    assert len(result2.reused) >= 6  # 카테고리 + 채널 5 + 웹훅 5
+    assert len(result2.env_updates) == 5  # URL은 여전히 반환 (재기록 안전)
 
 
 def test_forum_falls_back_to_text():
@@ -79,9 +80,9 @@ def test_forum_falls_back_to_text():
     result = provision(DiscordAdmin("token", req_fn=api), "G1")
 
     assert len([c for c in api.channels if c["type"] == TYPE_FORUM]) == 0
-    assert len([c for c in api.channels if c["type"] == TYPE_TEXT]) == 3  # 전부 텍스트 폴백
+    assert len([c for c in api.channels if c["type"] == TYPE_TEXT]) == 5  # 전부 텍스트 폴백
     assert len(result.warnings) == 2  # 포럼 2개에 대한 폴백 경고
-    assert len(result.env_updates) == 3  # 웹훅은 전부 발급됨
+    assert len(result.env_updates) == 5  # 웹훅은 전부 발급됨
 
 
 def test_bad_token_raises():

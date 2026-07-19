@@ -95,6 +95,11 @@ def main() -> None:
     p_llm = sub.add_parser("test-llm", help="LLM 2-티어 연결 테스트 (deep=Codex, quick=MiniMax)")
     p_llm.add_argument("--tier", choices=["deep", "quick", "both"], default="both")
 
+    p_diag = sub.add_parser("diagnose", help="AI 포트폴리오 진단 (딥씽킹)")
+    p_diag.add_argument("--channel", default="console", choices=["console", "discord"])
+
+    sub.add_parser("chat", help="디스코드 상담 봇 상주 실행 (#상담 채널)")
+
     p_an = sub.add_parser("analyze", help="종목 AI 토론 분석 — Bull/Bear → 판정 → 카드")
     p_an.add_argument("symbol", help="종목코드 (예: 005930)")
     p_an.add_argument("--date", default=None, help="기준일 YYYY-MM-DD (기본: 오늘)")
@@ -121,10 +126,23 @@ def main() -> None:
     elif args.command == "briefing":
         from aim.pipelines import run_kr_close_briefing
 
+        conn_for_provider = None
         if args.mock:
             from aim.data.provider import MockKRProvider
 
             provider = MockKRProvider()
+        elif settings.kis_app_key and settings.kis_app_secret:
+            # KIS 공식 API (pykrx는 KRX 로그인 요구로 대체됨)
+            from aim.data.kis.auth import KISAuth
+            from aim.data.kis.market import KISMarketProvider
+            from aim.storage import db as db_mod
+
+            conn_for_provider = db_mod.connect(settings.db_path)
+            db_mod.migrate(conn_for_provider)
+            provider = KISMarketProvider(
+                conn_for_provider,
+                KISAuth(settings.kis_app_key, settings.kis_app_secret, settings.kis_env),
+            )
         else:
             from aim.data.krx import PykrxKRProvider
 
@@ -146,7 +164,11 @@ def main() -> None:
 
             router = NotificationRouter({}, [ConsoleNotifier()])
 
-        report_id = run_kr_close_briefing(settings, provider, router, date=args.date)
+        try:
+            report_id = run_kr_close_briefing(settings, provider, router, date=args.date)
+        finally:
+            if conn_for_provider is not None:
+                conn_for_provider.close()
         print(f"\nreport saved: {report_id}")
 
     elif args.command == "schedule":
@@ -322,6 +344,43 @@ def main() -> None:
                 print(render_portfolio_md(views, totals))
         finally:
             conn.close()
+
+    elif args.command == "diagnose":
+        from aim.brain.diagnose import diagnose_portfolio
+        from aim.llm import build_llm
+        from aim.portfolio.prices import make_lookup, usdkrw
+        from aim.storage import db
+
+        deep = build_llm(settings, "deep")
+        conn = db.connect(settings.db_path)
+        try:
+            db.migrate(conn)
+            print(f"포트폴리오 진단 중 ({deep.name})...")
+            result = diagnose_portfolio(
+                conn, deep, _build_price_lookup(settings, conn), usdkrw()
+            )
+        finally:
+            conn.close()
+
+        if result is None:
+            print("포트폴리오가 비어있습니다.")
+            return
+        if args.channel == "discord":
+            from aim.delivery.router import build_router
+
+            router = build_router(settings, respect_dry_run=False, include_console=False)
+            router.send("portfolio", "🩺 포트폴리오 진단", result)
+            print("디스코드 #포트폴리오 채널로 발송 완료")
+        else:
+            print(f"\n{result}")
+
+    elif args.command == "chat":
+        from aim.chat.discord_bot import run_consult_bot
+
+        if not settings.discord_bot_token:
+            print("AIM_DISCORD_BOT_TOKEN 미설정")
+            return
+        run_consult_bot(settings)
 
     elif args.command == "analyze":
         from aim.brain.debate import analyze_stock

@@ -31,6 +31,8 @@ _CHANNEL_SPECS: list[tuple[str, int, str]] = [
     ("한국장-브리핑", TYPE_FORUM, "AIM_DISCORD_WEBHOOK_KR"),
     ("미국장-브리핑", TYPE_FORUM, "AIM_DISCORD_WEBHOOK_US"),
     ("관심종목-시그널", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_SIGNALS"),
+    ("포트폴리오", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_PORTFOLIO"),  # AI 진단 리포트
+    ("상담", TYPE_TEXT, "AIM_DISCORD_WEBHOOK_CONSULT"),          # LLM 대화 (aim chat 봇)
 ]
 
 ReqFn = Callable[[str, str, dict[str, Any] | None], tuple[int, Any]]
