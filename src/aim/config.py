@@ -52,6 +52,7 @@ class Settings:
     kis_app_key: str
     kis_app_secret: str
     kis_env: str  # prod | vps(모의)
+    kis_account_no: str  # "12345678-01" — 잔고 동기화(aim portfolio sync)용, 조회 전용
     dart_api_key: str
     # LLM 2-티어: 딥씽킹(판정자) = Codex CLI (ChatGPT 구독 OAuth, 토큰 갱신은 CLI가 담당)
     #             퀵씽킹(애널리스트) = MiniMax API
@@ -80,6 +81,7 @@ def get_settings() -> Settings:
         kis_app_key=env("AIM_KIS_APP_KEY", ""),
         kis_app_secret=env("AIM_KIS_APP_SECRET", ""),
         kis_env=env("AIM_KIS_ENV", "prod"),
+        kis_account_no=env("AIM_KIS_ACCOUNT_NO", ""),
         dart_api_key=env("AIM_DART_API_KEY", ""),
         minimax_api_key=env("AIM_MINIMAX_API_KEY", ""),
         minimax_model=env("AIM_MINIMAX_MODEL", "MiniMax-M3"),

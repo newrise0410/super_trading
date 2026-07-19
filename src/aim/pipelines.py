@@ -38,10 +38,11 @@ def run_kr_close_briefing(
         report_id = ReportsRepository(conn).save(
             kind="kr_close", market="KR", master_md=master_md, data=snap.to_dict()
         )
+        # 개인화 레이어 (§10.6-2) — 내 포트폴리오 평가. 실패해도 마스터는 발송
+        personal_md = build_personal_section(conn, provider.last_price)
     finally:
         conn.close()
 
-    personal_md = build_personal_section(user_context={}, master_md=master_md)
     final_md = master_md + (f"\n\n{personal_md}" if personal_md else "")
 
     title = f"🇰🇷 마감 브리핑 {date}"

@@ -16,6 +16,29 @@ import sys
 from aim.config import get_settings
 
 
+def _build_price_lookup(settings, conn):
+    """포트폴리오 평가용 시세 조회 — KIS(키 있으면) → pykrx 폴백."""
+    if settings.kis_app_key and settings.kis_app_secret:
+        try:
+            from aim.data.kis.auth import KISAuth
+            from aim.data.kis.intraday import KISIntradayProvider
+
+            provider = KISIntradayProvider(
+                conn, KISAuth(settings.kis_app_key, settings.kis_app_secret, settings.kis_env)
+            )
+
+            def kis_lookup(symbol: str):
+                quotes = provider.snapshot([symbol])
+                return (quotes[0].price, quotes[0].change_pct) if quotes else None
+
+            return kis_lookup
+        except Exception:  # noqa: BLE001
+            pass
+    from aim.data.krx import PykrxKRProvider
+
+    return PykrxKRProvider().last_price
+
+
 def main() -> None:
     # Windows 콘솔(cp949)에서 이모지·한글 출력 보장
     if hasattr(sys.stdout, "reconfigure"):
@@ -46,6 +69,18 @@ def main() -> None:
     wl_sub.add_parser("list")
     wl_rm = wl_sub.add_parser("rm")
     wl_rm.add_argument("symbol")
+
+    p_pf = sub.add_parser("portfolio", help="내 포트폴리오 관리")
+    pf_sub = p_pf.add_subparsers(dest="pf_command", required=True)
+    pf_add = pf_sub.add_parser("add", help="보유 종목 등록/수정")
+    pf_add.add_argument("symbol")
+    pf_add.add_argument("quantity", type=float)
+    pf_add.add_argument("avg_price", type=float)
+    pf_add.add_argument("--name", default="")
+    pf_rm = pf_sub.add_parser("rm")
+    pf_rm.add_argument("symbol")
+    pf_sub.add_parser("list", help="보유 종목 평가 (KIS→pykrx 시세)")
+    pf_sub.add_parser("sync", help="KIS 계좌 잔고 동기화 (AIM_KIS_ACCOUNT_NO 필요)")
 
     p_watch = sub.add_parser("watch", help="관심종목 실시간 추적·시그널")
     p_watch.add_argument("--mock", action="store_true", help="데모 시나리오 재생 (키 불필요)")
@@ -235,6 +270,50 @@ def main() -> None:
                 print(f"[{tier}] ✓ {elapsed:.1f}s — {reply[:120]}")
             except Exception as exc:  # noqa: BLE001
                 print(f"[{tier}] ✗ 실패: {exc}")
+
+    elif args.command == "portfolio":
+        from aim.portfolio import render_portfolio_md, value_portfolio
+        from aim.storage import db
+        from aim.storage.repositories.portfolio import PortfolioRepository
+
+        conn = db.connect(settings.db_path)
+        try:
+            db.migrate(conn)
+            repo = PortfolioRepository(conn)
+
+            if args.pf_command == "add":
+                repo.upsert(args.symbol, args.quantity, args.avg_price, name=args.name)
+                print(f"등록: {args.symbol} {args.quantity:,.0f}주 @ {args.avg_price:,.0f}")
+
+            elif args.pf_command == "rm":
+                repo.remove(args.symbol)
+                print(f"삭제: {args.symbol}")
+
+            elif args.pf_command == "sync":
+                if not settings.kis_account_no:
+                    print('AIM_KIS_ACCOUNT_NO 미설정 — .env에 "12345678-01" 형식으로 입력하세요.')
+                    return
+                from aim.data.kis.auth import KISAuth
+                from aim.portfolio.kis_sync import fetch_balance
+
+                auth = KISAuth(settings.kis_app_key, settings.kis_app_secret, settings.kis_env)
+                positions = fetch_balance(auth, settings.kis_account_no)
+                repo.replace_all(positions)
+                print(f"KIS 계좌 동기화 완료 — 보유 {len(positions)}종목:")
+                for p in positions:
+                    print(f"  {p['name']}({p['symbol']}) {p['quantity']:,.0f}주 @ {p['avg_price']:,.0f}")
+
+            else:  # list
+                rows = repo.list_all()
+                if not rows:
+                    print("(보유 종목 없음 — aim portfolio add <코드> <수량> <평단가>)")
+                    return
+                # 시세: KIS 우선, 실패 시 pykrx 폴백
+                lookup = _build_price_lookup(settings, conn)
+                views, totals = value_portfolio(rows, lookup)
+                print(render_portfolio_md(views, totals))
+        finally:
+            conn.close()
 
     elif args.command == "analyze":
         from aim.brain.debate import analyze_stock

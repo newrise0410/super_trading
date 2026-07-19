@@ -79,9 +79,9 @@ class WatchTracker:
     # ── 단위 사이클 ──────────────────────────────────────────────
 
     def run_once(self, now: datetime) -> list[Signal]:
-        symbols = [row["symbol"] for row in self._watchlist.list_active()]
+        symbols = self._symbols()
         if not symbols:
-            logger.info("watchlist empty — nothing to track")
+            logger.info("watchlist/portfolio empty — nothing to track")
             return []
 
         candidates: list[Signal] = []
@@ -174,6 +174,15 @@ class WatchTracker:
             time.sleep(poll_interval_sec)
 
     # ── 내부 ─────────────────────────────────────────────────────
+
+    def _symbols(self) -> list[str]:
+        """추적 대상 = 관심종목 ∪ 내 포트폴리오 보유 종목 (보유자는 항상 추적)."""
+        wl = [row["symbol"] for row in self._watchlist.list_active()]
+        pf = [
+            row["symbol"]
+            for row in self._watchlist.conn.execute("SELECT symbol FROM portfolio_positions")
+        ]
+        return list(dict.fromkeys(wl + pf))
 
     def _price_at_window_start(self, symbol: str, now: datetime) -> float | None:
         """now 기준 감지 창(5분) 이전~경계의 가장 오래된 가격."""
