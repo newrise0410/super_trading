@@ -32,7 +32,9 @@ _EVIDENCE_KEY_RE = re.compile(r"\s*\[[a-z][a-z0-9_]*\.[a-z0-9_]+\]")
 
 def _clean_reply(text: str) -> str:
     return _EVIDENCE_KEY_RE.sub("", text).strip()
-TURNS_PER_STAGE = 2
+MIN_TURNS_PER_STAGE = 1   # LLM이 [[NEXT]] 신호를 줘도 최소 1답은 필요
+MAX_TURNS_PER_STAGE = 4   # 신호가 없어도 강제 전진 (세션 늘어짐 방지)
+_NEXT_MARKER_RE = re.compile(r"\s*\[\[NEXT\]\]\s*$")
 STAGE_LABEL = {
     "business": "① 사업 이해", "valuation": "② 가격 vs 가치",
     "risk": "③ 리스크", "exit": "④ 출구 기준", "card": "결정 카드", "done": "완료",
@@ -49,12 +51,24 @@ NAME_MAP = {
 }
 
 
-def resolve_symbol(query: str) -> tuple[str, str] | None:
-    """자유 입력("삼성전자 살까?", "005930") → (종목코드, 표시명). 실패 시 None."""
+def resolve_symbol(query: str, conn: "sqlite3.Connection | None" = None) -> tuple[str, str] | None:
+    """자유 입력("삼성전자 살까?", "005930") → (종목코드, 표시명). 실패 시 None.
+
+    우선순위: 6자리 코드 → 종목 마스터 DB(symbols, `aim symbols-sync`) → 인기종목 맵 폴백.
+    """
     text = query.strip().lower()
     m = re.search(r"\b(\d{6})\b", text)
     if m:
         return m.group(1), m.group(1)
+    if conn is not None:
+        try:
+            from aim.socra.symbols import search_symbol  # noqa: PLC0415
+
+            hit = search_symbol(conn, text)
+            if hit:
+                return hit
+        except Exception:  # noqa: BLE001
+            logger.exception("symbol DB search failed")
     for name, code in NAME_MAP.items():
         if name in text:
             return code, name if not name.islower() else name.upper()
@@ -74,7 +88,7 @@ class SocraEngine:
     # ── 세션 시작 ────────────────────────────────────────────────
 
     def start_session(self, query: str, user_id: str = "local") -> dict[str, Any]:
-        resolved = resolve_symbol(query)
+        resolved = resolve_symbol(query, self._conn)
         if resolved is None:
             return {"error": "종목을 찾지 못했어요. 종목코드 6자리(예: 005930) 또는 종목명으로 입력해 주세요."}
         symbol, _ = resolved
@@ -101,7 +115,7 @@ class SocraEngine:
         return {
             "session_id": session_id, "symbol": symbol, "name": name,
             "stage": "business", "stage_label": STAGE_LABEL["business"],
-            "reply": opening, "legend": detect_terms(self._conn, opening),
+            "reply": opening, "legend": self._legend(opening, user_id),
         }
 
     # ── 턴 처리 ──────────────────────────────────────────────────
@@ -115,31 +129,43 @@ class SocraEngine:
 
         self._save_turn(session_id, "user", text, session["stage"])
 
+        # 지식 모델: 용어 질문 감지 → asked 기록 (2층 신호)
+        from aim.socra.mastery import MasteryModel  # noqa: PLC0415
+
+        mastery = MasteryModel(self._conn, session["user_id"])
+        mastery.detect_asked_concepts(text)
+
         if session["stage"] == "card":
             return self._handle_card_stage(session, text)
         if session["stage"] == "done":
             return self._reply(session, "이 세션은 완료됐어요. 사이드바에서 새 대화를 시작해 보세요! 🎉")
 
-        # 일반 단계: 소크라테스 턴
-        reply = _clean_reply(self._quick.complete(
+        # 일반 단계: 소크라테스 턴 (지식 상태 주입 — 난이도 적응)
+        raw = self._quick.complete(
             prompts.TURN_TEMPLATE.format(
                 base=prompts.BASE_GUARD,
                 stage_goal=prompts.STAGE_GOALS[session["stage"]],
+                mastery=mastery.summary_text(),
                 name=session["name"], symbol=session["symbol"],
                 evidence=session["evidence_md"],
                 history=self._history_text(session_id),
                 user_text=text,
             ),
             text,
-        ))
+        )
+        llm_next = bool(_NEXT_MARKER_RE.search(raw))
+        reply = _clean_reply(_NEXT_MARKER_RE.sub("", raw))
 
-        # 단계 진행 판정 (v1: 단계당 사용자 답 N회)
+        # 단계 진행: LLM [[NEXT]] 신호 (최소 1답) 또는 최대 답 수 도달 시 강제
         new_stage = session["stage"]
         user_turns = self._conn.execute(
             "SELECT COUNT(*) AS n FROM socra_turns WHERE session_id = ? AND role='user' AND stage = ?",
             (session_id, session["stage"]),
         ).fetchone()["n"]
-        if user_turns >= TURNS_PER_STAGE:
+        should_advance = (llm_next and user_turns >= MIN_TURNS_PER_STAGE) or (
+            user_turns >= MAX_TURNS_PER_STAGE
+        )
+        if should_advance:
             idx = STAGES.index(session["stage"])
             if idx + 1 < len(STAGES):
                 new_stage = STAGES[idx + 1]
@@ -149,7 +175,7 @@ class SocraEngine:
 
         self._save_turn(session_id, "bot", reply, new_stage)
         return {
-            "reply": reply, "legend": detect_terms(self._conn, reply),
+            "reply": reply, "legend": self._legend(reply, session["user_id"]),
             "stage": new_stage, "stage_label": STAGE_LABEL[new_stage],
         }
 
@@ -172,7 +198,7 @@ class SocraEngine:
         self._conn.commit()
         self._save_turn(session["session_id"], "bot", present, "card")
         return {
-            "reply": present, "legend": detect_terms(self._conn, present),
+            "reply": present, "legend": self._legend(present, session["user_id"]),
             "stage": "card", "stage_label": STAGE_LABEL["card"], "card_draft": draft,
         }
 
@@ -202,17 +228,32 @@ class SocraEngine:
                 "stage_label": STAGE_LABEL["card"], "card_draft": draft}
 
     def _synthesize_card(self, session) -> dict[str, Any]:
+        concept_list = "\n".join(
+            f"- {r['slug']}: {r['term']}"
+            for r in self._conn.execute("SELECT slug, term FROM concepts")
+        )
         raw = self._deep.complete(
             "너는 대화록 정리 서기다. 지시를 정확히 따르라.",
-            prompts.CARD_SYNTH.replace("{transcript}", self._history_text(session["session_id"])),
+            prompts.CARD_SYNTH
+            .replace("{transcript}", self._history_text(session["session_id"]))
+            .replace("{concept_list}", concept_list),
         )
         try:
             text = re.sub(r"```(?:json)?|```", "", raw)
             start, end = text.find("{"), text.rfind("}")
-            return json.loads(text[start:end + 1])
+            draft = json.loads(text[start:end + 1])
         except (ValueError, json.JSONDecodeError):
             logger.exception("card synth parse failed")
             return {"thesis": "(정리 실패 — 다시 시도해 주세요)", "gaps": ["카드 합성 실패"]}
+
+        # 지식 모델 갱신 (deep 평가 신호): 이해 입증 → 3, 혼동 → 2
+        from aim.socra.mastery import MasteryModel  # noqa: PLC0415
+
+        mastery = MasteryModel(self._conn, session["user_id"])
+        mastery.record_demonstrated(list(draft.get("concepts_understood") or []))
+        for slug in draft.get("concepts_confused") or []:
+            mastery.record_asked(slug)
+        return draft
 
     def _save_card(self, session) -> str:
         draft = json.loads(session["card_draft_json"] or "{}")
@@ -303,6 +344,16 @@ class SocraEngine:
         ).fetchall()
         who = {"bot": "소크라", "user": "사용자"}
         return "\n".join(f"{who[r['role']]}: {r['content']}" for r in rows)
+
+    def _legend(self, reply: str, user_id: str) -> list[dict]:
+        """범례 — 이해 입증(레벨 3) 개념은 생략, 노출된 것은 exposure 기록 (성장 가시화)."""
+        from aim.socra.mastery import MasteryModel  # noqa: PLC0415
+
+        mastery = MasteryModel(self._conn, user_id)
+        known = mastery.known_slugs()
+        legend = [item for item in detect_terms(self._conn, reply) if item["slug"] not in known]
+        mastery.record_exposure([item["slug"] for item in legend])
+        return legend
 
     def _save_turn(self, session_id: str, role: str, content: str, stage: str) -> None:
         self._conn.execute(

@@ -122,6 +122,8 @@ def main() -> None:
     p_dash = sub.add_parser("dashboard", help="웹 대시보드 실행")
     p_dash.add_argument("--port", type=int, default=8501)
 
+    sub.add_parser("symbols-sync", help="상장 종목 마스터 동기화 (소크라 종목 검색용)")
+
     sub.add_parser("test-telegram", help="텔레그램 연결 테스트 (chat_id 미설정 시 자동 감지)")
     sub.add_parser("test-discord", help="디스코드 웹훅 연결 테스트")
     sub.add_parser("discord-setup", help="디스코드 서버 프로비저닝 — 채널·웹훅 자동 생성 + .env 기록")
@@ -179,6 +181,18 @@ def main() -> None:
         from aim.web.app import run_dashboard
 
         run_dashboard(settings, port=args.port)
+
+    elif args.command == "symbols-sync":
+        from aim.socra.symbols import sync_symbols
+        from aim.storage import db
+
+        conn = db.connect(settings.db_path)
+        try:
+            db.migrate(conn)
+            total = sync_symbols(conn)
+        finally:
+            conn.close()
+        print(f"종목 마스터 동기화 완료: {total:,}개 (KOSPI+KOSDAQ)")
 
     elif args.command == "briefing" and args.kind in ("kr-open", "us-open", "us-close"):
         from aim.delivery.router import NotificationRouter, build_router

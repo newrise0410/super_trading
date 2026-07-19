@@ -53,6 +53,9 @@ TURN_TEMPLATE = """{base}
 
 {stage_goal}
 
+[사용자 지식 상태 — 난이도를 여기에 맞춰라]
+{mastery}
+
 [증거 — {name}({symbol}) 실데이터. 이것만 인용 가능]
 {evidence}
 
@@ -60,6 +63,11 @@ TURN_TEMPLATE = """{base}
 {history}
 
 사용자의 마지막 말에 반응하고, 현재 단계의 목표를 향해 질문 하나로 이어가라.
+
+단계 진행 판정: 사용자가 이 단계의 목표를 충분히 자기 언어로 답했다고 판단되면,
+응답 마지막 줄에 정확히 [[NEXT]] 만 써라 (사용자에게 보이지 않는 내부 신호다).
+아직 부족하면 아무것도 붙이지 마라. 서두르지 마라 — 얕은 답에 [[NEXT]]를 주면 안 된다.
+
 사용자 마지막 말: {user_text}"""
 
 OPENING_TEMPLATE = """{base}
@@ -85,8 +93,13 @@ CARD_SYNTH = """아래는 '소크라' 튜터와 사용자의 대화 전문이다
   "stop_reason": "사용자가 말한 이유" 또는 null,
   "recheck_conditions": ["사용자가 언급한 재검토 조건들"],
   "confidence_self": 사용자가 밝힌 확신도 0~100 또는 null,
-  "gaps": ["대화에서 끝내 채워지지 않은 부분 (예: 손절선을 정하지 못함)"]
+  "gaps": ["대화에서 끝내 채워지지 않은 부분 (예: 손절선을 정하지 못함)"],
+  "concepts_understood": ["아래 개념 목록 중 사용자가 대화에서 올바르게 이해·사용한 것의 slug"],
+  "concepts_confused": ["아래 개념 목록 중 사용자가 헷갈려한 것의 slug"]
 }
+
+[개념 목록 (slug: 용어)]
+{concept_list}
 
 [대화 전문]
 {transcript}"""

@@ -22,6 +22,20 @@ SEED_CONCEPTS: list[tuple[str, str, list[str], str]] = [
     ("disclosure", "공시", ["전자공시", "DART"], "회사가 의무적으로 알리는 공식 소식 (계약·증자·실적 등)"),
     ("earnings", "실적", ["영업이익", "매출"], "회사가 실제로 얼마나 벌었는지 — 주가의 장기 연료"),
     ("valuation", "밸류에이션", ["기업가치", "적정가치"], "이 회사가 얼마짜리인지 따져보는 일 — 가격과 가치는 다르다"),
+    ("order_type", "시장가/지정가", ["시장가", "지정가"], "시장가 = 지금 당장 아무 가격에나 / 지정가 = 내가 정한 가격에만 사고팔기"),
+    ("orderbook", "호가", ["호가창", "매수호가", "매도호가"], "사려는 사람과 팔려는 사람이 부른 가격이 줄 서 있는 판"),
+    ("rights_issue", "유상증자", [], "회사가 새 주식을 찍어 돈을 받고 파는 것 — 내 지분이 희석될 수 있음"),
+    ("bonus_issue", "무상증자", [], "회사가 새 주식을 공짜로 나눠주는 것 — 주식 수가 늘고 주가는 그만큼 조정"),
+    ("stock_split", "액면분할", [], "주식 1장을 여러 장으로 쪼개는 것 — 가치는 그대로, 가격만 낮아져 사기 쉬워짐"),
+    ("short_selling", "공매도", [], "주식을 빌려서 먼저 팔고 나중에 사서 갚는 것 — 떨어져야 돈 버는 방식"),
+    ("margin", "신용거래", ["신용잔고", "미수"], "증권사 돈을 빌려서 주식을 사는 것 — 수익도 손실도 커지는 양날의 검"),
+    ("market_kind", "코스피/코스닥", ["코스피", "코스닥"], "코스피 = 대형·전통 기업 시장 / 코스닥 = 중소·성장 기업 시장"),
+    ("etf", "ETF", ["상장지수펀드"], "여러 주식을 한 바구니에 담아 주식처럼 사고파는 상품"),
+    ("ex_dividend", "배당락", [], "배당 받을 권리가 사라지는 날 — 그날 주가가 배당만큼 내려가는 게 보통"),
+    ("surprise", "어닝서프라이즈", ["어닝쇼크"], "실적이 예상보다 훨씬 좋음(서프라이즈)/나쁨(쇼크) — 주가가 크게 반응"),
+    ("consensus", "컨센서스", ["목표주가", "애널리스트 전망"], "증권사 애널리스트들의 평균 전망치 — 시장의 기대선"),
+    ("averaging_down", "물타기", ["추가매수"], "떨어질 때 더 사서 평단가를 낮추는 것 — 근거 없이 하면 손실만 키움"),
+    ("diversification", "분산투자", ["몰빵"], "한 종목에 다 걸지 않고 나누는 것 — 하나가 틀려도 살아남기 위해"),
 ]
 
 
@@ -39,7 +53,7 @@ def seed_concepts(conn: sqlite3.Connection) -> int:
 
 
 def detect_terms(conn: sqlite3.Connection, text: str) -> list[dict]:
-    """텍스트에 등장한 개념 → 범례 목록 [{term, short_def}] (등장 순, 중복 제거)."""
+    """텍스트에 등장한 개념 → 범례 목록 [{slug, term, short_def}] (등장 순, 중복 제거)."""
     found: list[dict] = []
     seen: set[str] = set()
     rows = conn.execute("SELECT slug, term, aliases, short_def FROM concepts").fetchall()
@@ -48,7 +62,9 @@ def detect_terms(conn: sqlite3.Connection, text: str) -> list[dict]:
         keywords = [row["term"], *json.loads(row["aliases"])]
         positions = [text.find(k) for k in keywords if k and k in text]
         if positions:
-            matches.append((min(positions), {"term": row["term"], "short_def": row["short_def"]}))
+            matches.append((min(positions), {
+                "slug": row["slug"], "term": row["term"], "short_def": row["short_def"],
+            }))
     for _pos, item in sorted(matches, key=lambda x: x[0]):
         if item["term"] not in seen:
             seen.add(item["term"])

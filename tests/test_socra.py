@@ -81,24 +81,41 @@ def test_start_session_creates_evidence_watchlist_and_opening(conn):
     assert [t["role"] for t in turns] == ["bot"]
 
 
-def test_stage_advances_after_two_user_turns(conn):
-    engine = _engine(conn)
+class NextLLM(FakeLLM):
+    """항상 [[NEXT]] 신호를 주는 LLM — 여정 테스트용."""
+
+    def complete(self, system, user):
+        self.calls.append((system, user))
+        return "좋은 답이에요! 다음 질문입니다? [[NEXT]]"
+
+
+def test_stage_advance_by_llm_marker(conn):
+    quick = FakeLLM(["오프닝?", "조금 더 들려주세요", "충분해요! [[NEXT]]"])
+    engine = _engine(conn, quick)
     sid = engine.start_session("삼성전자")["session_id"]
 
     r1 = engine.handle_message(sid, "반도체 만드는 회사요")
-    assert r1["stage"] == "business"                    # 1번째 답 — 유지
+    assert r1["stage"] == "business"                    # 마커 없음 — 유지
     r2 = engine.handle_message(sid, "메모리가 주력이에요")
-    assert r2["stage"] == "valuation"                   # 2번째 답 — 전진
+    assert r2["stage"] == "valuation"                   # [[NEXT]] — 전진
+    assert "[[NEXT]]" not in r2["reply"]                # 내부 신호는 비노출
+
+
+def test_stage_forced_advance_at_max_turns(conn):
+    engine = _engine(conn, FakeLLM())                   # 기본 응답 — 마커 없음
+    sid = engine.start_session("삼성전자")["session_id"]
+    stages = [engine.handle_message(sid, f"답 {i}")["stage"] for i in range(4)]
+    assert stages == ["business"] * 3 + ["valuation"]   # 4답째 강제 전진 (늘어짐 방지)
 
 
 def test_full_journey_reaches_card_and_saves(conn):
-    quick = FakeLLM()
+    quick = NextLLM()
     deep = FakeLLM([CARD_JSON])
     engine = _engine(conn, quick, deep)
     sid = engine.start_session("삼성전자")["session_id"]
 
     result = None
-    for i in range(len(STAGES) * 2):                    # 4단계 × 2답
+    for i in range(len(STAGES)):                        # 매 답마다 [[NEXT]] → 4답이면 카드
         result = engine.handle_message(sid, f"답변 {i}")
     assert result["stage"] == "card"
     assert result["card_draft"]["target_price"] == 300000
@@ -114,10 +131,10 @@ def test_full_journey_reaches_card_and_saves(conn):
 
 def test_resave_supersedes_previous_card(conn):
     for _ in range(2):
-        quick, deep = FakeLLM(), FakeLLM([CARD_JSON])
+        quick, deep = NextLLM(), FakeLLM([CARD_JSON])
         engine = _engine(conn, quick, deep)
         sid = engine.start_session("삼성전자")["session_id"]
-        for i in range(len(STAGES) * 2):
+        for i in range(len(STAGES)):
             engine.handle_message(sid, f"답 {i}")
         engine.handle_message(sid, "확정")
 
@@ -166,3 +183,101 @@ def test_legend_detects_terms_in_order(conn):
 def test_legend_caps_at_five(conn):
     text = "PER PBR 시총 거래량 손절 익절 배당 공시"
     assert len(detect_terms(conn, text)) == 5
+
+
+# ── 지식 모델 (S2) ────────────────────────────────────────────
+
+def test_legend_omits_demonstrated_and_records_exposure(conn):
+    from aim.socra.mastery import MasteryModel
+
+    r = _engine(conn, FakeLLM(["PER과 시총을 볼게요. 어떠세요?"])).start_session("삼성전자")
+    assert {l["slug"] for l in r["legend"]} == {"per", "market_cap"}
+    row = conn.execute("SELECT level, exposures FROM concept_mastery WHERE slug='per'").fetchone()
+    assert row["level"] == 1 and row["exposures"] == 1      # 노출 기록
+
+    MasteryModel(conn).record_demonstrated(["per"])
+    r2 = _engine(conn, FakeLLM(["다시 PER과 시총 얘기예요."])).start_session("005930")
+    assert {l["slug"] for l in r2["legend"]} == {"market_cap"}  # 이해한 PER은 범례 생략
+
+
+def test_asked_detection_marks_unskilled(conn):
+    engine = _engine(conn, FakeLLM())
+    sid = engine.start_session("삼성전자")["session_id"]
+    engine.handle_message(sid, "PER이 뭐예요?")
+    row = conn.execute("SELECT level FROM concept_mastery WHERE slug='per'").fetchone()
+    assert row["level"] == 2                                # 질문 = 미숙련 신호
+
+
+def test_mastery_summary_injected_into_prompt(conn):
+    from aim.socra.mastery import MasteryModel
+
+    MasteryModel(conn).record_demonstrated(["per"])
+    MasteryModel(conn).record_asked("flow")
+    quick = FakeLLM()
+    engine = _engine(conn, quick)
+    sid = engine.start_session("삼성전자")["session_id"]
+    engine.handle_message(sid, "네")
+    system = quick.calls[-1][0]
+    assert "이해한 개념" in system and "PER" in system
+    assert "미숙련 개념" in system and "수급" in system
+
+
+def test_card_synth_updates_mastery(conn):
+    card = json.loads(CARD_JSON)
+    card["concepts_understood"] = ["per", "stop_loss"]
+    card["concepts_confused"] = ["flow"]
+    engine = _engine(conn, NextLLM(), FakeLLM([json.dumps(card, ensure_ascii=False)]))
+    sid = engine.start_session("삼성전자")["session_id"]
+    for i in range(len(STAGES)):
+        engine.handle_message(sid, f"답 {i}")
+
+    levels = {r["slug"]: r["level"] for r in conn.execute("SELECT slug, level FROM concept_mastery")}
+    assert levels["per"] == 3 and levels["stop_loss"] == 3
+    assert levels["flow"] == 2
+
+
+# ── 종목 검색 (S2) ────────────────────────────────────────────
+
+def _mst_line(code, name, tail_len):
+    head = code.ljust(9) + "KR700000000X".ljust(12) + name
+    return head + "0" * tail_len
+
+
+def test_parse_mst_filters_and_extracts():
+    from aim.socra.symbols import parse_mst
+
+    lines = [
+        _mst_line("005930", "삼성전자", 228),
+        _mst_line("0001B0", "이상한신형코드", 228),   # 6자리 숫자 아님 → 제외
+        _mst_line("035420", "NAVER", 228),
+    ]
+    rows = parse_mst("\n".join(lines).encode("cp949"), 228)
+    assert rows == [("005930", "삼성전자"), ("035420", "NAVER")]
+
+
+def test_sync_and_search_symbols(conn):
+    import io
+    import zipfile
+
+    from aim.socra.symbols import search_symbol, sync_symbols
+
+    def make_zip(inner, text, tail):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr(inner, text.encode("cp949"))
+        return buf.getvalue()
+
+    def fake_fetch(url):
+        if "kospi" in url:
+            return make_zip("kospi_code.mst", _mst_line("005930", "삼성전자", 228), 228)
+        return make_zip("kosdaq_code.mst", _mst_line("068270", "셀트리온", 222), 222)
+
+    assert sync_symbols(conn, fetch=fake_fetch) == 2
+    assert search_symbol(conn, "삼성전자") == ("005930", "삼성전자")
+    assert search_symbol(conn, "셀트리온 살까 말까?") == ("068270", "셀트리온")
+    assert search_symbol(conn, "없는종목") is None
+
+    # resolve_symbol이 DB를 우선 사용
+    from aim.socra.engine import resolve_symbol
+
+    assert resolve_symbol("셀트리온 어때?", conn) == ("068270", "셀트리온")
