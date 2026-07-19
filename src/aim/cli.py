@@ -56,6 +56,11 @@ def main() -> None:
     p_llm = sub.add_parser("test-llm", help="LLM 2-티어 연결 테스트 (deep=Codex, quick=MiniMax)")
     p_llm.add_argument("--tier", choices=["deep", "quick", "both"], default="both")
 
+    p_an = sub.add_parser("analyze", help="종목 AI 토론 분석 — Bull/Bear → 판정 → 카드")
+    p_an.add_argument("symbol", help="종목코드 (예: 005930)")
+    p_an.add_argument("--date", default=None, help="기준일 YYYY-MM-DD (기본: 오늘)")
+    p_an.add_argument("--show-debate", action="store_true", help="Bull/Bear 전문 출력")
+
     sub.add_parser("test-telegram", help="텔레그램 연결 테스트 (chat_id 미설정 시 자동 감지)")
     sub.add_parser("test-discord", help="디스코드 웹훅 연결 테스트")
     sub.add_parser("discord-setup", help="디스코드 서버 프로비저닝 — 채널·웹훅 자동 생성 + .env 기록")
@@ -230,6 +235,33 @@ def main() -> None:
                 print(f"[{tier}] ✓ {elapsed:.1f}s — {reply[:120]}")
             except Exception as exc:  # noqa: BLE001
                 print(f"[{tier}] ✗ 실패: {exc}")
+
+    elif args.command == "analyze":
+        from aim.brain.debate import analyze_stock
+        from aim.evidence.collector import collect_kr_evidence
+        from aim.llm import build_llm
+        from aim.storage import db
+
+        print(f"증거 수집 중: {args.symbol} ...")
+        evidence = collect_kr_evidence(args.symbol, args.date)
+        print(f"수집 완료 — 증거 {len(evidence.items)}개" + (f", 실패 축: {evidence.gaps}" if evidence.gaps else ""))
+
+        quick = build_llm(settings, "quick")
+        deep = build_llm(settings, "deep")
+        print(f"토론 시작 — Bull/Bear: {quick.name}({quick.model}), 판정: {deep.name}({deep.model})")
+
+        conn = db.connect(settings.db_path)
+        try:
+            db.migrate(conn)
+            result = analyze_stock(conn, evidence, quick, deep)
+        finally:
+            conn.close()
+
+        if args.show_debate:
+            print(f"\n─── Bull ───\n{result.bull_case}")
+            print(f"\n─── Bear ───\n{result.bear_case}")
+        print(f"\n{result.card_md}")
+        print(f"\ndecision saved: {result.decision_id}")
 
     elif args.command == "test-telegram":
         import requests

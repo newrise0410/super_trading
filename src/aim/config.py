@@ -82,7 +82,7 @@ def get_settings() -> Settings:
         kis_env=env("AIM_KIS_ENV", "prod"),
         dart_api_key=env("AIM_DART_API_KEY", ""),
         minimax_api_key=env("AIM_MINIMAX_API_KEY", ""),
-        minimax_model=env("AIM_MINIMAX_MODEL", "MiniMax-M2"),
+        minimax_model=env("AIM_MINIMAX_MODEL", "MiniMax-M3"),
         minimax_base_url=env("AIM_MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
         codex_model=env("AIM_CODEX_MODEL", ""),
     )
