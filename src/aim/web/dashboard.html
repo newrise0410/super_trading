@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIM 대시보드</title>
+<style>
+  /* 검증된 기본 팔레트 (dataviz reference instance) — 역할 토큰으로만 사용 */
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6; --series-2: #008300; --series-3: #e87ba4;
+    --up: #006300; --down: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19;
+      --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+      --series-1: #3987e5; --series-2: #008300; --series-3: #d55181;
+      --up: #0ca30c; --down: #d03b3b;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--page); color: var(--ink);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 20px; }
+  main { max-width: 960px; margin: 0 auto; display: grid; gap: 16px; }
+  h1 { font-size: 20px; } h2 { font-size: 15px; margin-bottom: 10px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .tile .label { color: var(--muted); font-size: 12px; }
+  .tile .value { font-size: 24px; font-weight: 650; margin-top: 2px; }
+  .tile .sub { color: var(--ink-2); font-size: 12px; }
+  .up { color: var(--up); } .down { color: var(--down); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-align: left; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+  tr:last-child td { border-bottom: 0; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px;
+          border: 1px solid var(--border); color: var(--ink-2); }
+  .legend { display: flex; gap: 14px; margin-bottom: 8px; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 12px; }
+  .dot { width: 10px; height: 10px; border-radius: 99px; }
+  #chart-wrap { position: relative; }
+  #tooltip { position: absolute; pointer-events: none; background: var(--surface);
+             border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+             font-size: 12px; display: none; box-shadow: 0 4px 14px rgba(0,0,0,.15);
+             font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .report-item { cursor: pointer; padding: 6px 8px; border-radius: 6px; display: flex; gap: 10px; }
+  .report-item:hover { background: var(--grid); }
+  #report-view { white-space: pre-wrap; font-size: 13px; color: var(--ink-2);
+                 border-top: 1px solid var(--grid); margin-top: 10px; padding-top: 10px; display: none; }
+  .muted { color: var(--muted); }
+  svg text { font: 11px system-ui, sans-serif; fill: var(--muted); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <h1>📊 AIM 대시보드</h1>
+
+  <div class="tiles" id="tiles"><div class="card tile"><div class="label">불러오는 중…</div></div></div>
+
+  <div class="card">
+    <h2>전략 시뮬레이션 — 누적 수익률</h2>
+    <div class="legend" id="legend"></div>
+    <div id="chart-wrap">
+      <svg id="chart" width="100%" viewBox="0 0 900 340" role="img" aria-label="전략별 누적 수익률 라인 차트"></svg>
+      <div id="tooltip"></div>
+    </div>
+    <div class="muted" id="chart-empty" style="display:none">시뮬레이션 기록이 아직 없습니다 — 마감 브리핑 실행 시 축적됩니다.</div>
+  </div>
+
+  <div class="card"><h2>💼 내 포트폴리오</h2>
+    <table id="positions"><thead><tr>
+      <th>종목</th><th>수량</th><th>현재가</th><th>등락</th><th>손익</th><th>비중</th>
+    </tr></thead><tbody><tr><td colspan="6" class="muted">시세 조회 중… (KIS·yfinance)</td></tr></tbody></table>
+  </div>
+
+  <div class="card"><h2>🧠 최근 AI 판단</h2>
+    <table id="decisions"><thead><tr>
+      <th>일시</th><th>종목</th><th>판정</th><th>확신도</th><th>사후 5일</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="card"><h2>📋 리포트 아카이브</h2>
+    <div id="reports"></div><div id="report-view"></div>
+  </div>
+
+  <div class="card"><h2>🔔 최근 시그널</h2>
+    <table id="signals"><thead><tr><th>일시</th><th>종목</th><th>종류</th><th>내용</th></tr></thead>
+    <tbody></tbody></table>
+  </div>
+</main>
+
+<script>
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const SERIES_COLORS = ['--series-1', '--series-2', '--series-3'];
+const fmt = (n, d=2) => n.toLocaleString('ko-KR', {minimumFractionDigits:d, maximumFractionDigits:d});
+const money = (v, cur) => cur === 'USD' ? '$' + fmt(v) : fmt(v, 0) + '원';
+const cls = v => v > 0 ? 'up' : (v < 0 ? 'down' : '');
+
+async function j(url) { const r = await fetch(url); return r.json(); }
+
+/* ── 스탯 타일 + 포트폴리오 ── */
+j('/api/overview').then(d => {
+  const t = d.totals, tiles = [];
+  if (t.combined_krw != null)
+    tiles.push({label:'통합 평가액', value: fmt(t.combined_krw,0)+'원',
+                sub: t.fx_usdkrw ? '환율 '+fmt(t.fx_usdkrw,0) : ''});
+  for (const [cur, b] of Object.entries(t.by_currency)) {
+    const pnl = b.pnl;
+    tiles.push({label: cur+' 평가', value: money(b.value, cur),
+                sub: pnl==null?'':'손익 '+(pnl>=0?'+':'')+fmt(pnl), subCls: cls(pnl)});
+  }
+  document.getElementById('tiles').innerHTML = tiles.map(x =>
+    `<div class="card tile"><div class="label">${x.label}</div><div class="value">${x.value}</div>
+     <div class="sub ${x.subCls||''}">${x.sub||''}</div></div>`).join('');
+
+  document.querySelector('#positions tbody').innerHTML = d.positions.map(p => {
+    const pr = p.price==null ? '<span class="muted">—</span>' : money(p.price, p.currency);
+    const ch = p.change_pct==null ? '' : `<span class="${cls(p.change_pct)}">${p.change_pct>0?'+':''}${fmt(p.change_pct)}%</span>`;
+    const pnl = p.pnl==null ? '<span class="muted">평단 미입력</span>'
+      : `<span class="${cls(p.pnl)}">${p.pnl>0?'+':''}${fmt(p.pnl)} (${p.pnl_pct>0?'+':''}${fmt(p.pnl_pct,1)}%)</span>`;
+    const w = p.weight_pct==null ? '' : fmt(p.weight_pct,0)+'%';
+    return `<tr><td>${p.name}</td><td>${p.quantity}</td><td>${pr}</td><td>${ch}</td><td>${pnl}</td><td>${w}</td></tr>`;
+  }).join('');
+});
+
+/* ── 자산곡선 라인 차트 (2px 라인·헤어라인 그리드·크로스헤어 툴팁·직접 라벨) ── */
+j('/api/equity').then(d => {
+  const svg = document.getElementById('chart');
+  if (!d.series.length) { svg.style.display='none';
+    document.getElementById('chart-empty').style.display='block'; return; }
+
+  const W=900, H=340, L=56, R=130, T=16, B=30, pw=W-L-R, ph=H-T-B;
+  const dates = [...new Set(d.series.flatMap(s => s.points.map(p => p[0])))].sort();
+  const xi = Object.fromEntries(dates.map((dt,i)=>[dt,i]));
+  const vals = d.series.flatMap(s => s.points.map(p => p[1]));
+  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const pad = Math.max((hi-lo)*0.15, 0.5); lo -= pad; hi += pad;
+  const X = dt => L + (dates.length<2 ? pw/2 : xi[dt]/(dates.length-1)*pw);
+  const Y = v => T + (hi-v)/(hi-lo)*ph;
+
+  let g = '';
+  const steps = 5;
+  for (let i=0;i<=steps;i++) {
+    const v = lo + (hi-lo)*i/steps, y = Y(v);
+    g += `<line x1="${L}" x2="${L+pw}" y1="${y}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>`;
+    g += `<text x="${L-8}" y="${y+4}" text-anchor="end">${v.toFixed(1)}%</text>`;
+  }
+  if (lo<0 && hi>0)  /* 0% 기준선 강조 */
+    g += `<line x1="${L}" x2="${L+pw}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--axis)" stroke-width="1"/>`;
+  const ticks = dates.length<=3 ? dates : [dates[0], dates[Math.floor(dates.length/2)], dates.at(-1)];
+  for (const dt of ticks)
+    g += `<text x="${X(dt)}" y="${H-8}" text-anchor="middle">${dt.slice(5)}</text>`;
+
+  d.series.forEach((s,i) => {
+    const color = `var(${SERIES_COLORS[i%3]})`;
+    const pts = s.points.map(p => `${X(p[0])},${Y(p[1])}`).join(' ');
+    g += s.points.length>1
+      ? `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`
+      : '';
+    const last = s.points.at(-1);
+    g += `<circle cx="${X(last[0])}" cy="${Y(last[1])}" r="4" fill="${color}"
+           stroke="var(--surface)" stroke-width="2"/>`;
+    /* 직접 라벨 — 텍스트는 잉크 토큰, 색은 점이 담당 */
+    g += `<circle cx="${L+pw+10}" cy="${Y(last[1])}" r="4" fill="${color}"/>
+          <text x="${L+pw+18}" y="${Y(last[1])+4}" style="fill:var(--ink-2)">${s.label} ${last[1]>=0?'+':''}${last[1].toFixed(2)}%</text>`;
+  });
+  g += `<line id="xhair" y1="${T}" y2="${T+ph}" stroke="var(--axis)" stroke-width="1" opacity="0"/>`;
+  g += `<rect id="hit" x="${L}" y="${T}" width="${pw}" height="${ph}" fill="transparent"/>`;
+  svg.innerHTML = g;
+
+  document.getElementById('legend').innerHTML = d.series.map((s,i) =>
+    `<span class="item"><span class="dot" style="background:var(${SERIES_COLORS[i%3]})"></span>${s.label}</span>`).join('');
+
+  const tip = document.getElementById('tooltip'), xh = document.getElementById('xhair');
+  document.getElementById('hit').addEventListener('mousemove', ev => {
+    const rect = svg.getBoundingClientRect(), sx = W/rect.width;
+    const px = (ev.clientX-rect.left)*sx;
+    const idx = Math.round((px-L)/(pw||1)*(dates.length-1));
+    const dt = dates[Math.max(0, Math.min(dates.length-1, idx))];
+    xh.setAttribute('x1', X(dt)); xh.setAttribute('x2', X(dt)); xh.setAttribute('opacity', 1);
+    tip.innerHTML = `<b>${dt}</b><br>` + d.series.map((s,i) => {
+      const p = s.points.find(p=>p[0]===dt);
+      return p ? `<span class="dot" style="display:inline-block;background:var(${SERIES_COLORS[i%3]})"></span> ${s.label}: ${p[1]>=0?'+':''}${p[1].toFixed(2)}%` : '';
+    }).filter(Boolean).join('<br>');
+    tip.style.display='block';
+    tip.style.left = Math.min(X(dt)/sx+14, rect.width-170)+'px';
+    tip.style.top = '20px';
+  });
+  document.getElementById('hit').addEventListener('mouseleave', () => {
+    tip.style.display='none'; xh.setAttribute('opacity', 0);
+  });
+});
+
+/* ── 판단·리포트·시그널 ── */
+j('/api/decisions').then(rows => {
+  document.querySelector('#decisions tbody').innerHTML = rows.map(r => {
+    const conf = r.confidence==null?'':fmt(r.confidence*100,0)+'%';
+    const out = r.outcome_return_5d==null ? '<span class="muted">대기</span>'
+      : `<span class="${cls(r.outcome_return_5d)}">${r.outcome_return_5d>0?'+':''}${fmt(r.outcome_return_5d,1)}%</span>`;
+    return `<tr><td>${r.created_at.slice(0,16)}</td><td>${r.name} (${r.symbol})</td>
+      <td><span class="chip">${r.action}</span></td><td>${conf}</td><td>${out}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="muted">판단 기록 없음</td></tr>';
+});
+
+const KIND = {kr_close:'🇰🇷 마감', us_close:'🇺🇸 마감', portfolio_diag:'🩺 진단', weekly:'📊 주간'};
+j('/api/reports').then(rows => {
+  document.getElementById('reports').innerHTML = rows.map(r =>
+    `<div class="report-item" onclick="showReport('${r.report_id}')">
+       <span class="chip">${KIND[r.kind]||r.kind}</span><span>${r.created_at.slice(0,16)}</span></div>`
+  ).join('') || '<div class="muted">리포트 없음</div>';
+});
+async function showReport(id) {
+  const d = await j('/api/reports/'+id);
+  const v = document.getElementById('report-view');
+  v.textContent = d.master_md; v.style.display = 'block'; v.scrollIntoView({behavior:'smooth'});
+}
+
+j('/api/signals').then(rows => {
+  document.querySelector('#signals tbody').innerHTML = rows.map(r =>
+    `<tr><td>${r.fired_at.slice(5,16)}</td><td>${r.symbol}</td>
+     <td><span class="chip">${r.kind}</span></td><td>${r.message}</td></tr>`
+  ).join('') || '<tr><td colspan="4" class="muted">시그널 없음</td></tr>';
+});
+</script>
+</body>
+</html>

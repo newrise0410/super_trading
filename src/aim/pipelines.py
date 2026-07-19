@@ -47,6 +47,16 @@ def run_kr_close_briefing(
         except Exception:  # noqa: BLE001
             logger.exception("simulation cycle failed")
 
+        # 반성 루프 — 5거래일 지난 판단의 사후 수익률 기록 (실패 격리)
+        try:
+            from aim.brain.reflect import evaluate_outcomes  # noqa: PLC0415
+
+            evaluated = evaluate_outcomes(conn)
+            if evaluated:
+                logger.info("reflection: %d decisions evaluated", evaluated)
+        except Exception:  # noqa: BLE001
+            logger.exception("reflection failed")
+
         report_id = ReportsRepository(conn).save(
             kind="kr_close", market="KR", master_md=master_md, data=snap.to_dict()
         )

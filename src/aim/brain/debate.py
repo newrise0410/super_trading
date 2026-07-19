@@ -72,6 +72,12 @@ def analyze_stock(
 ) -> AnalysisResult:
     ev_md = evidence.render_for_llm()
 
+    # 축적된 종목 지식 주입 (§13) — 과거 논지·리스크·사후 결과(반성 루프)가 다음 판단의 입력이 된다
+    knowledge = KnowledgeStore(conn)
+    context = knowledge.get_context(evidence.symbol)
+    if context:
+        ev_md += "\n\n## 축적된 종목 지식 (과거 분석·결과)\n" + KnowledgeStore.render_context(context)
+
     bull = quick.complete(BULL_SYS, ev_md)
     bear = quick.complete(BEAR_SYS, f"{ev_md}\n\n## 강세론자의 주장\n{bull}")
 
